@@ -30,13 +30,16 @@ export function buildApp(config: AppConfig, db: Database) {
   });
 
   app.setErrorHandler((error, _request, reply) => {
-    app.log.error({ errorName: error.name, statusCode: error.statusCode ?? 500 }, "Request failed");
-    const statusCode = error.statusCode && error.statusCode >= 400 && error.statusCode < 500
-      ? error.statusCode
-      : 500;
+    const statusCandidate = error instanceof Error && "statusCode" in error
+      && typeof error.statusCode === "number" ? error.statusCode : 500;
+    const statusCode = statusCandidate >= 400 && statusCandidate < 500 ? statusCandidate : 500;
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    app.log.error({ errorName, statusCode }, "Request failed");
     return reply.code(statusCode).send({
       error: statusCode === 500 ? "internal_error" : "request_error",
-      message: statusCode === 500 ? "An unexpected error occurred." : error.message
+      message: statusCode === 500
+        ? "An unexpected error occurred."
+        : error instanceof Error ? error.message : "Invalid request."
     });
   });
 
