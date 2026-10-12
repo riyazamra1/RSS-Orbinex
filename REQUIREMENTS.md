@@ -15,7 +15,7 @@
 
 RSS Orbinex will provide small and medium-sized businesses with a secure, dependable system to manage customers, suppliers, quotations, sales invoices, purchases, stock, payments, expenses, and financial reports from one place.
 
-The product must use a central backend API so that the web client and future Windows desktop client share the same business rules, permissions, database, and subscription enforcement. It must support multiple independent customer businesses (tenants) without exposing one tenant's records to another.
+The product must use a central backend API so that web, Windows, and Android clients share the same business rules, permissions, database, and subscription enforcement. It must support multiple independent customer businesses (tenants) without exposing one tenant's records to another.
 
 ### 1.1 Goals
 
@@ -35,7 +35,7 @@ Unless explicitly approved later, the first release does not promise:
 - A full payroll, human resources, manufacturing, or point-of-sale hardware suite.
 - Direct submission to every country's tax authority or guaranteed tax compliance in every jurisdiction.
 - Bank-feed aggregation, automatic bank transfers, or payment processing without a selected provider.
-- Offline desktop operation with automatic conflict-free synchronization.
+- Offline operation that bypasses online authentication or guarantees conflict-free synchronization. Offline work is permitted only under the online-login, durable-local-queue, and domain-aware conflict rules in OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md.
 - AI-generated accounting entries without user review and explicit approval.
 - Multi-currency revaluation or complex consolidation before the accounting rules are specified.
 - A claim of certification, legal compliance, or guaranteed uptime that has not been independently verified.
@@ -283,14 +283,17 @@ Requirements must be verified by automated tests, integration tests, security te
 - **UI-008 (SHOULD):** Support configurable branding and document templates within safe limits.
 - **UI-009 (MUST):** Display actionable, non-sensitive error messages and preserve safe form input after recoverable errors where practical.
 
-### 5.6 Future Windows desktop client
+### 5.6 Windows and Android clients
 
-- **DESK-001 (MUST):** Build the Windows client only after the shared API contracts and core web workflows stabilize.
-- **DESK-002 (MUST):** Reuse server-side business rules, permission checks, tenant isolation, and subscription enforcement.
-- **DESK-003 (MUST):** Store credentials in an operating-system-protected credential store; never embed shared secrets in the installer.
-- **DESK-004 (MUST):** Define signed release artifacts, update verification, rollback, and a secure update channel before distribution.
-- **DESK-005 (TBD):** Decide whether offline access is required. If it is, separately specify local encryption, synchronization, conflict resolution, revocation, and stale-data behavior.
-- **DESK-006 (MUST):** Do not claim offline support until the offline behavior has passed dedicated tests.
+- **DESK-001 (MUST):** Windows and Android clients must use the shared versioned API and the same server-side business rules, permission checks, tenant isolation, and subscription enforcement.
+- **DESK-002 (MUST):** Login requires internet connectivity. A fresh app launch while offline must keep the normal workspace locked until online revalidation and required synchronization complete.
+- **DESK-003 (MUST):** During a previously authenticated session, support only explicitly designed offline operations; persist each change and its sync-queue entry atomically in encrypted local storage.
+- **DESK-004 (MUST):** Automatically synchronize queued operations after connectivity returns, with stable idempotency IDs, durable cursors, server-side validation, and accounting-aware conflict handling.
+- **DESK-005 (MUST):** Preserve unacknowledged local operations across crashes, power loss, logout attempts, and app updates. Never silently discard pending operations.
+- **DESK-006 (MUST):** Store credentials and encryption keys using platform-protected facilities; never embed backend secrets in client packages.
+- **DESK-007 (MUST):** Define signed release artifacts, update verification, rollback, and a secure update channel before distribution.
+- **DESK-008 (MUST):** Removable-drive backup is optional and administrator-controlled. Keep the active local database in app-managed storage; encrypt and verify backups, and test restore before release.
+- **DESK-009 (MUST):** Do not claim offline, recovery, synchronization, or removable-drive backup support until the dedicated acceptance tests pass. See OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md.
 
 ## 6. Security and privacy requirements
 
@@ -461,8 +464,8 @@ Order may change based on technical findings, but dependencies must be respected
 
 ### Phase 5 — Desktop and expansion
 
-- Build the Windows client on the stable shared API.
-- Add offline mode only if separately specified and tested.
+- Build Windows and Android clients on the shared API and platform-protected local storage.
+- Implement the approved offline-session, synchronization, recovery, and removable-drive backup requirements in OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md; release only after acceptance tests pass.
 - Expand integrations and advanced features based on customer evidence and validated requirements.
 
 ## 13. Open decisions requiring explicit approval
@@ -480,7 +483,7 @@ Order may change based on technical findings, but dependencies must be respected
 | OQ-009 | Email provider and payment/subscription provider | Verification, notifications, billing, refunds, and webhooks |
 | OQ-010 | Subscription prices, plans, trials, quotas, and grace period | Entitlement enforcement and customer terms |
 | OQ-011 | Backup retention, RPO/RTO, and production availability target | Recovery capability and operating cost |
-| OQ-012 | Windows desktop technology and offline requirements | Distribution, secure updates, local data, and synchronization |
+| OQ-012 | Client rollout order and platform-specific storage constraints | Windows/Android packaging, secure updates, removable-drive APIs, and platform validation |
 | OQ-013 | Logo/branding and document-template customization | User experience and branding scope |
 | OQ-014 | Data retention and tenant closure/export process | Contractual and jurisdictional obligations |
 
