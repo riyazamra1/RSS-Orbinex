@@ -16,15 +16,18 @@ The project is being established incrementally. Requirements documents describe 
 - PostgreSQL via the pg driver
 - Zod environment validation
 - API liveness/readiness endpoints
-- Initial tenant, identity, device, idempotency, change-event, and audit schema
+- Online login, server-validated session inspection, and online logout endpoints
+- Opaque random bearer sessions stored as SHA-256 hashes, with expiry and server-side revocation
+- Argon2id password verification and API rate limiting
+- Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
-The API foundation is not yet a complete authentication system and must not be exposed publicly until authentication, authorization, rate limiting, migration tooling, and deployment security are implemented.
+The API authentication foundation is not yet a complete production identity lifecycle. User provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
 
 ## Local API setup
 
 1. Install Node.js 22 or newer and PostgreSQL.
 2. Copy `.env.example` to `.env` and configure the database connection.
-3. Create the development database and apply `apps/api/migrations/001_platform_foundation.sql`.
+3. Create the development database and apply migrations in order: `001_platform_foundation.sql`, then `002_auth_sessions.sql`.
 4. Run `npm install`.
 5. Run `npm run dev:api`.
 6. Check `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
