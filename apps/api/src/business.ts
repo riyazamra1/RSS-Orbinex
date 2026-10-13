@@ -8,8 +8,8 @@ const movementSchema = z.object({
   operationId: z.string().uuid(),
   productId: z.string().uuid(),
   movementType: z.enum(["opening","purchase","sale","customer_return","supplier_return","damage","adjustment_in","adjustment_out","transfer_in","transfer_out"]),
-  quantity: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,4})?$/).refine((value) => Number(value) > 0, "Quantity must be positive"),
-  unitCost: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,4})?$/).default("0"),
+  quantity: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\.[0-9]{1,4})?$/).refine((value) => Number(value) > 0, "Quantity must be positive"),
+  unitCost: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\.[0-9]{1,4})?$/).default("0"),
   reason: z.string().trim().min(1).max(500),
   sourceType: z.enum(["purchase","invoice","sales_return","damage","adjustment","transfer","opening"]).optional(),
   sourceId: z.string().uuid().optional()
