@@ -19,6 +19,8 @@ The project is being established incrementally. Requirements documents describe 
 - Online login, server-validated session inspection, and online logout endpoints
 - Opaque random bearer sessions stored as SHA-256 hashes, with expiry and server-side revocation
 - Argon2id password verification and API rate limiting
+- Tenant-scoped sync push/pull endpoints using an append-only change journal
+- Transactional sync batches, operation-ID idempotency, server-assigned entity versions, and role-based write allowlists
 - Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
 The API authentication foundation is not yet a complete production identity lifecycle. User provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
@@ -36,9 +38,9 @@ Do not use example settings in production. Production database connections must 
 
 ## Planned implementation order
 
-1. Secure online authentication and tenant membership authorization.
-2. Versioned API contracts and server-side idempotency.
-3. Durable change feed and audited business transactions.
+1. Complete the identity lifecycle and administrator/device management.
+2. Extend the sync journal into validated business-domain transactions and versioned API contracts.
+3. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages.
 4. Encrypted local storage and outbox for Windows/Android clients.
 5. Accounting-aware conflict resolution and automatic sync.
 6. Administrator-controlled encrypted removable-drive backup and tested restore.
