@@ -21,7 +21,7 @@ const operationSchema = z.object({
 });
 const pushSchema = z.object({ operations: z.array(operationSchema).min(1).max(100) });
 const pullSchema = z.object({
-  cursor: z.string().regex(/^\\d+$/).default("0"),
+  cursor: z.string().refine((value) => value.length > 0 && [...value].every((char) => char >= "0" && char <= "9")).default("0"),
   limit: z.coerce.number().int().min(1).max(500).default(200)
 });
 
