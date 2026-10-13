@@ -126,7 +126,7 @@ export function authenticate(db: Database) {
     if (!match) {
       return reply.code(401).send({ error: "unauthorized", message: "A valid online session is required." });
     }
-    const tokenHash = hashSessionToken(match[1]);
+    const tokenHash = hashSessionToken(match[1]!);
     const result = await db.query(
       `SELECT s.id AS session_id, s.tenant_id, s.user_id, s.device_id,
               u.email, tm.role_key
