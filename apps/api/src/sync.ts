@@ -21,7 +21,7 @@ const operationSchema = z.object({
 });
 const pushSchema = z.object({ operations: z.array(operationSchema).min(1).max(100) });
 const pullSchema = z.object({
-  cursor: z.coerce.number().int().min(0).default(0),
+  cursor: z.string().regex(/^\\d+$/).default("0"),
   limit: z.coerce.number().int().min(1).max(500).default(200)
 });
 
@@ -129,7 +129,7 @@ export function registerSync(app: FastifyInstance, db: Database) {
     }));
     return {
       events,
-      nextCursor: events.length ? events[events.length - 1]!.sequence : String(parsed.data.cursor),
+      nextCursor: events.length ? events[events.length - 1]!.sequence : parsed.data.cursor,
       hasMore: events.length === parsed.data.limit
     };
   });
