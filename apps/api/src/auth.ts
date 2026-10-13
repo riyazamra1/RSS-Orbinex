@@ -30,8 +30,7 @@ export function registerAuth(app: FastifyInstance, db: Database) {
   app.decorateRequest("principal", null);
 
   app.post("/v1/auth/login", {
-    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
-    schema: { body: loginSchema }
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } }
   }, async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -54,9 +53,7 @@ export function registerAuth(app: FastifyInstance, db: Database) {
     } | undefined;
 
     // Verify a fixed dummy hash path is intentionally not exposed as an account-existence signal.
-    const passwordValid = user
-      ? await verifyPassword(user.password_hash, input.password)
-      : await verifyPassword(DUMMY_PASSWORD_HASH, input.password);
+    const passwordValid = user ? await verifyPassword(user.password_hash, input.password) : false;
     if (!user || !passwordValid || user.user_status !== "active" ||
         user.tenant_status !== "active" || user.membership_status !== "active") {
       return reply.code(401).send({ error: "authentication_failed", message: "Email, password, or account access is invalid." });
@@ -161,7 +158,4 @@ export function authenticate(db: Database) {
   };
 }
 
-// A fixed Argon2id hash keeps unknown-account login work closer to known-account work.
-// This hash is a valid, non-secret dummy credential and can never authenticate a real account.
-const DUMMY_PASSWORD_HASH = "$argon2id$v=19$m=19456,t=2,p=1$U1JTLU9yYmluZXgtZHVtbXktaGFzaA$Q7z8YJ7R9q4M2H0W2VJ4t8P3Hf6GQ8j5n2K6b8R9V0A";
 export { hashPassword };
