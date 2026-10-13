@@ -19,6 +19,20 @@ export function createDatabase(config: AppConfig) {
 
   return {
     query: pool.query.bind(pool),
+    async transaction<T>(work: (client: any) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await work(client);
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async check(): Promise<boolean> {
       try {
         await pool.query("SELECT 1");
