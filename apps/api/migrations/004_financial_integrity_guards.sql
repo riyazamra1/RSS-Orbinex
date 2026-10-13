@@ -30,16 +30,22 @@ DECLARE
   target_invoice UUID;
   invoice_status TEXT;
 BEGIN
-  target_tenant := COALESCE(NEW.tenant_id, OLD.tenant_id);
-  target_invoice := COALESCE(NEW.invoice_id, OLD.invoice_id);
+  IF TG_OP = 'DELETE' THEN
+    target_tenant := OLD.tenant_id;
+    target_invoice := OLD.invoice_id;
+  ELSE
+    target_tenant := NEW.tenant_id;
+    target_invoice := NEW.invoice_id;
+  END IF;
   SELECT status INTO invoice_status FROM invoices
     WHERE tenant_id = target_tenant AND id = target_invoice FOR UPDATE;
   IF invoice_status IS DISTINCT FROM 'draft' THEN
     RAISE EXCEPTION 'Invoice lines can only change while invoice is draft';
   END IF;
-  RETURN COALESCE(NEW, OLD);
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
 END;
-$$;
+$;
 
 DROP TRIGGER IF EXISTS invoice_lines_guard_mutation ON invoice_lines;
 CREATE TRIGGER invoice_lines_guard_mutation BEFORE INSERT OR UPDATE OR DELETE ON invoice_lines
@@ -91,16 +97,22 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  target_tenant := COALESCE(NEW.tenant_id, OLD.tenant_id);
-  target_journal := COALESCE(NEW.journal_entry_id, OLD.journal_entry_id);
+  IF TG_OP = 'DELETE' THEN
+    target_tenant := OLD.tenant_id;
+    target_journal := OLD.journal_entry_id;
+  ELSE
+    target_tenant := NEW.tenant_id;
+    target_journal := NEW.journal_entry_id;
+  END IF;
   SELECT status INTO journal_status FROM journal_entries
     WHERE tenant_id = target_tenant AND id = target_journal FOR UPDATE;
   IF journal_status IS DISTINCT FROM 'draft' THEN
     RAISE EXCEPTION 'Journal lines can only change while journal is draft';
   END IF;
-  RETURN COALESCE(NEW, OLD);
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
 END;
-$$;
+$;
 
 DROP TRIGGER IF EXISTS journal_entries_guard_mutation ON journal_entries;
 CREATE TRIGGER journal_entries_guard_mutation BEFORE UPDATE ON journal_entries
