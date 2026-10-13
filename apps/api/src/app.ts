@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { registerAuth } from "./auth.js";
+import { registerSync } from "./sync.js";
 import type { AppConfig } from "./config.js";
 import type { Database } from "./db.js";
 
@@ -18,6 +19,7 @@ export function buildApp(config: AppConfig, db: Database) {
   app.register(helmet, { global: true });
   app.register(rateLimit, { global: true, max: 100, timeWindow: "1 minute" });
   registerAuth(app, db);
+  registerSync(app, db);
 
   app.get("/health/live", async () => ({ status: "ok", service: "rss-orbinex-api" }));
 
