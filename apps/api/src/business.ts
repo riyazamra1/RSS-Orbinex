@@ -8,8 +8,8 @@ const movementSchema = z.object({
   operationId: z.string().uuid(),
   productId: z.string().uuid(),
   movementType: z.enum(["opening","purchase","sale","customer_return","supplier_return","damage","adjustment_in","adjustment_out","transfer_in","transfer_out"]),
-  quantity: z.number().finite().positive().max(1_000_000_000),
-  unitCost: z.number().finite().min(0).max(1_000_000_000).default(0),
+  quantity: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,4})?$/).refine((value) => Number(value) > 0, "Quantity must be positive"),
+  unitCost: z.string().regex(/^(?:0|[1-9][0-9]{0,8})(?:\\.[0-9]{1,4})?$/).default("0"),
   reason: z.string().trim().min(1).max(500),
   sourceType: z.enum(["purchase","invoice","sales_return","damage","adjustment","transfer","opening"]).optional(),
   sourceId: z.string().uuid().optional()
@@ -26,8 +26,8 @@ function canonical(value: unknown): string {
 function digest(value: unknown): Buffer {
   return createHash("sha256").update(canonical(value)).digest();
 }
-function signedQuantity(type: z.infer<typeof movementSchema>["movementType"], quantity: number): number {
-  return ["sale","supplier_return","damage","adjustment_out","transfer_out"].includes(type) ? -quantity : quantity;
+function signedQuantity(type: z.infer<typeof movementSchema>["movementType"], quantity: string): string {
+  return ["sale","supplier_return","damage","adjustment_out","transfer_out"].includes(type) ? "-" + quantity : quantity;
 }
 
 export function registerBusiness(app: FastifyInstance, db: Database) {
@@ -69,12 +69,11 @@ export function registerBusiness(app: FastifyInstance, db: Database) {
         if (productResult.rowCount !== 1) throw new Error("PRODUCT_NOT_FOUND");
 
         const balanceResult = await client.query(
-          "SELECT COALESCE(SUM(quantity_delta),0) AS balance FROM stock_movements WHERE tenant_id=$1 AND product_id=$2",
-          [principal.tenantId, input.productId]
+          "SELECT (COALESCE(SUM(quantity_delta),0) + $3::numeric) AS next_balance FROM stock_movements WHERE tenant_id=$1 AND product_id=$2",
+          [principal.tenantId, input.productId, delta]
         );
-        const currentBalance = Number((balanceResult.rows[0] as { balance: string }).balance);
-        const nextBalance = currentBalance + delta;
-        if (nextBalance < -0.00005) throw new Error("INSUFFICIENT_STOCK");
+        const nextBalance = String((balanceResult.rows[0] as { next_balance: string }).next_balance);
+        if (Number(nextBalance) < 0) throw new Error("INSUFFICIENT_STOCK");
 
         const movementResult = await client.query(
           "INSERT INTO stock_movements (tenant_id,product_id,movement_type,quantity_delta,unit_cost,source_type,source_id,reason,recorded_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,created_at",
@@ -86,7 +85,7 @@ export function registerBusiness(app: FastifyInstance, db: Database) {
           [principal.tenantId,movement.id,JSON.stringify({ productId: input.productId, movementType: input.movementType, quantityDelta: delta, balance: nextBalance })]
         );
         const sequence = String((eventResult.rows[0] as { sequence_id: string | number }).sequence_id);
-        const responseBody = { movementId: movement.id, sequence, balance: String(nextBalance) };
+        const responseBody = { movementId: movement.id, sequence, balance: nextBalance };
         await client.query(
           "UPDATE idempotency_records SET response_status=200,response_body=$3::jsonb,completed_at=now() WHERE tenant_id=$1 AND operation_id=$2",
           [principal.tenantId,input.operationId,JSON.stringify(responseBody)]
