@@ -5,6 +5,13 @@
 
 This is an implementation tracker, not a declaration that the full product is production-ready. A route passing TypeScript/build/unit CI does not replace PostgreSQL integration, security, concurrency, recovery, or end-to-end testing.
 
+## Local-first development foundation
+
+- [x] Added a Compose-managed PostgreSQL 17 development service bound to `127.0.0.1` only; database data persists in a named local volume.
+- [x] Added `LOCAL_DEVELOPMENT.md` with local setup, ordered migration, health-check, test, stop, and reset instructions.
+- [x] Updated the example environment and API development/start scripts to load the root `.env` file without adding a third-party service or API key.
+- [ ] Run the local setup on a real development machine and verify migrations, API readiness, and tests end to end. This has not been run from this repository connector session.
+
 ## Implemented in the API repository
 
 - [x] Fastify + TypeScript API foundation, PostgreSQL access, health/readiness routes, request rate limits, and security headers.
