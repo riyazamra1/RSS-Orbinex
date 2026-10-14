@@ -78,9 +78,6 @@ function mayManageSuppliersAndProducts(role: string): boolean {
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23505";
 }
-function isForeignKeyViolation(error: unknown): boolean {
-  return !!error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "23503";
-}
 
 export function registerCatalog(app: FastifyInstance, db: Database) {
   app.get("/v1/customers", { preHandler: authenticate(db) }, async (request, reply) => {
@@ -242,7 +239,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
        GROUP BY p.id ORDER BY p.name,p.sku LIMIT $4 OFFSET $5`,
       [principal.tenantId,status ?? null,q ?? null,limit,offset]
     );
-    return { products: result.rows.map((row) => ({ id: row.id, sku: row.sku, name: row.name, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance, lowStock: row.product_type === "stock" && Number(row.stock_balance) <= Number(row.reorder_level), createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
+    return { products: result.rows.map((row) => ({ id: row.id, sku: row.sku, name: row.name, productType: row.product_type, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance, lowStock: row.product_type === "stock" && Number(row.stock_balance) <= Number(row.reorder_level), createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
   });
 
   app.post("/v1/products", { preHandler: authenticate(db) }, async (request, reply) => {
