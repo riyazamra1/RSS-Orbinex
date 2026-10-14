@@ -41,6 +41,40 @@ function mayRecordPayment(role: string): boolean {
 }
 
 export function registerPayments(app: FastifyInstance, db: Database) {
+  app.get("/v1/payments", { preHandler: authenticate(db) }, async (request, reply) => {
+    const query = z.object({
+      customerId: z.string().uuid().optional(),
+      invoiceId: z.string().uuid().optional(),
+      from: z.string().date().optional(),
+      to: z.string().date().optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().min(0).max(100000).default(0)
+    }).strict().safeParse(request.query);
+    if (!query.success || (query.data?.from && query.data?.to && query.data.from > query.data.to)) {
+      return reply.code(400).send({ error: "invalid_payment_filter", message: "Payment filters or date range are invalid." });
+    }
+    const principal = request.principal!;
+    const input = query.data;
+    const result = await db.query(
+      `SELECT p.id,p.payment_number,p.customer_id,c.display_name AS customer_name,p.invoice_id,i.invoice_number,
+              p.direction,p.amount::text AS amount,p.currency,p.method,p.reference,p.paid_at
+       FROM payments p JOIN customers c ON c.tenant_id=p.tenant_id AND c.id=p.customer_id
+       LEFT JOIN invoices i ON i.tenant_id=p.tenant_id AND i.id=p.invoice_id
+       WHERE p.tenant_id=$1 AND ($2::uuid IS NULL OR p.customer_id=$2)
+         AND ($3::uuid IS NULL OR p.invoice_id=$3)
+         AND ($4::date IS NULL OR p.paid_at::date >= $4::date)
+         AND ($5::date IS NULL OR p.paid_at::date <= $5::date)
+       ORDER BY p.paid_at DESC,p.created_at DESC LIMIT $6 OFFSET $7`,
+      [principal.tenantId,input.customerId ?? null,input.invoiceId ?? null,input.from ?? null,input.to ?? null,input.limit,input.offset]
+    );
+    return { payments: result.rows.map((row) => ({
+      id: row.id, paymentNumber: row.payment_number, customerId: row.customer_id, customerName: row.customer_name,
+      invoiceId: row.invoice_id, invoiceNumber: row.invoice_number, direction: row.direction,
+      amount: row.amount, currency: row.currency, method: row.method, reference: row.reference,
+      paidAt: new Date(row.paid_at as string | Date).toISOString()
+    })), limit: input.limit, offset: input.offset };
+  });
+
   app.post("/v1/payments", { preHandler: authenticate(db) }, async (request, reply) => {
     const parsed = paymentSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_payment", message: "Provide a valid payment, invoice, journal number, and two distinct accounts." });
