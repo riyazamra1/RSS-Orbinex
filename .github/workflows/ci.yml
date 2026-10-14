@@ -1,0 +1,67 @@
+name: RSS Orbinex CI
+
+on:
+  push:
+    paths:
+      - "apps/api/**"
+      - "package.json"
+      - "apps/api/package.json"
+      - "apps/api/migrations/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "package.json"
+      - "apps/api/package.json"
+      - "apps/api/migrations/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: rss_orbinex
+          POSTGRES_USER: rss_orbinex
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rss_orbinex -d rss_orbinex"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://rss_orbinex:ci-only-password@127.0.0.1:5432/rss_orbinex
+      DATABASE_SSL: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Apply database migrations to clean PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          for migration in apps/api/migrations/*.sql; do
+            echo "Applying $migration"
+            PGPASSWORD=ci-only-password psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Type-check API
+        run: npm run typecheck
+      - name: Build API
+        run: npm run build
+      - name: Run API tests
+        run: npm test
