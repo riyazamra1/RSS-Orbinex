@@ -10,7 +10,8 @@ const schema = z.object({
   HOST: z.string().default("127.0.0.1"),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   DATABASE_URL: z.string().url().default("postgresql://localhost:5432/rss_orbinex"),
-  DATABASE_SSL: booleanFromEnv.default(false)
+  DATABASE_SSL: booleanFromEnv.default(false),
+  BOOTSTRAP_SECRET: z.string().min(32).optional()
 });
 
 export type AppConfig = z.infer<typeof schema>;
