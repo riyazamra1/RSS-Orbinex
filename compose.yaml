@@ -21,5 +21,47 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  migrate:
+    image: postgres:17-alpine
+    container_name: rss-orbinex-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://rss_orbinex:local-dev-only-change-before-sharing@postgres:5432/rss_orbinex
+      MIGRATIONS_DIR: /migrations
+    volumes:
+      - ./apps/api/migrations:/migrations:ro
+      - ./scripts/migrate.sh:/scripts/migrate.sh:ro
+    entrypoint: ["/bin/sh", "/scripts/migrate.sh"]
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rss-orbinex-api
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: postgresql://rss_orbinex:local-dev-only-change-before-sharing@postgres:5432/rss_orbinex
+      DATABASE_SSL: "false"
+      BOOTSTRAP_SECRET: ${BOOTSTRAP_SECRET:-replace-with-random-secret-at-least-32-characters}
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 10
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   rss_orbinex_pgdata:
