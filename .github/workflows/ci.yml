@@ -64,3 +64,5 @@ jobs:
         run: npm run build
       - name: Run API tests
         run: npm test
+      - name: Build API container image
+        run: docker build -t rss-orbinex-api:ci .
