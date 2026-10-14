@@ -58,14 +58,11 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Apply database migrations to clean PostgreSQL
+      - name: Apply database migrations to clean PostgreSQL using the migration ledger
         shell: bash
         run: |
           set -euo pipefail
-          for migration in apps/api/migrations/*.sql; do
-            echo "Applying $migration"
-            PGPASSWORD=ci-only-password psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
-          done
+          PGPASSWORD=ci-only-password DATABASE_URL="$DATABASE_URL" MIGRATIONS_DIR=apps/api/migrations ./scripts/migrate.sh
       - name: Type-check API
         run: npm run typecheck
       - name: Build API
