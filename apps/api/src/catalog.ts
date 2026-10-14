@@ -199,6 +199,62 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     return { suppliers: result.rows.map((row) => ({ id: row.id, code: row.supplier_code, name: row.display_name, email: row.email, phone: row.phone, address: row.address, status: row.status, createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
   });
 
+  app.get("/v1/suppliers/:id", { preHandler: authenticate(db) }, async (request, reply) => {
+    const parsed = idParam.safeParse(request.params);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_supplier_id", message: "A valid supplier ID is required." });
+    const principal = request.principal!;
+    const result = await db.query(
+      "SELECT id,supplier_code,display_name,email,phone,address,status,created_at,updated_at FROM suppliers WHERE tenant_id=$1 AND id=$2",
+      [principal.tenantId,parsed.data.id]
+    );
+    if (result.rowCount !== 1) return reply.code(404).send({ error: "supplier_not_found", message: "The supplier was not found in this business." });
+    const row = result.rows[0]!;
+    return { supplier: { id: row.id, code: row.supplier_code, name: row.display_name, email: row.email, phone: row.phone, address: row.address, status: row.status, createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() } };
+  });
+
+  app.patch("/v1/suppliers/:id", { preHandler: authenticate(db) }, async (request, reply) => {
+    const params = idParam.safeParse(request.params);
+    const parsed = supplierUpdate.safeParse(request.body);
+    if (!params.success || !parsed.success) return reply.code(400).send({ error: "invalid_supplier_update", message: "Provide a valid supplier ID and at least one valid field." });
+    const principal = request.principal!;
+    if (!mayManageSuppliersAndProducts(principal.roleKey)) return reply.code(403).send({ error: "forbidden", message: "Your role cannot manage suppliers." });
+    const input = parsed.data;
+    const fields: Array<[string, unknown]> = [
+      ["supplier_code",input.code],["display_name",input.name],["email",input.email],["phone",input.phone],
+      ["address",input.address === undefined ? undefined : JSON.stringify(input.address)],["status",input.status]
+    ];
+    const setFields = fields.filter((entry) => entry[1] !== undefined);
+    const values: unknown[] = [principal.tenantId,params.data.id];
+    const sets = setFields.map(([column,value]) => {
+      values.push(value);
+      const idx = values.length;
+      return column === "address" ? column + "=$" + idx + "::jsonb" : column + "=$" + idx;
+    });
+    values.push(new Date().toISOString());
+    const updatedAtIndex = values.length;
+    try {
+      const result = await db.transaction(async (client) => {
+        const updated = await client.query(
+          `UPDATE suppliers SET ${sets.join(",")},updated_at=${updatedAtIndex}::timestamptz WHERE tenant_id=$1 AND id=$2
+           RETURNING id,supplier_code,display_name,email,phone,address,status,updated_at`,
+          values
+        );
+        if (updated.rowCount !== 1) throw new Error("SUPPLIER_NOT_FOUND");
+        const row = updated.rows[0]!;
+        const versionResult = await client.query("SELECT COALESCE(MAX(entity_version),0)+1 AS version FROM change_events WHERE tenant_id=$1 AND entity_type='supplier' AND entity_id=$2",[principal.tenantId,row.id]);
+        const version = Number((versionResult.rows[0] as { version: string | number }).version);
+        await client.query("INSERT INTO audit_events (tenant_id,actor_user_id,event_type,entity_type,entity_id,outcome,metadata) VALUES ($1,$2,'supplier.update','supplier',$3,'success',$4::jsonb)",[principal.tenantId,principal.userId,row.id,JSON.stringify({ changedFields: setFields.map(([column]) => column) })]);
+        await client.query("INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'supplier',$2,$3,'upsert',$4::jsonb)",[principal.tenantId,row.id,version,JSON.stringify({ id: row.id, code: row.supplier_code, name: row.display_name, email: row.email, phone: row.phone, address: row.address, status: row.status })]);
+        return row;
+      });
+      return { supplier: { id: result.id, code: result.supplier_code, name: result.display_name, email: result.email, phone: result.phone, address: result.address, status: result.status, updatedAt: new Date(result.updated_at as string | Date).toISOString() } };
+    } catch (error) {
+      if (error instanceof Error && error.message === "SUPPLIER_NOT_FOUND") return reply.code(404).send({ error: "supplier_not_found", message: "The supplier was not found in this business." });
+      if (isUniqueViolation(error)) return reply.code(409).send({ error: "supplier_code_exists", message: "That supplier code is already in use in this business." });
+      throw error;
+    }
+  });
+
   app.post("/v1/suppliers", { preHandler: authenticate(db) }, async (request, reply) => {
     const parsed = supplierCreate.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_supplier", message: "Provide a supplier code and name with valid contact details." });
