@@ -1,0 +1,25 @@
+name: rss-orbinex-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rss-orbinex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rss_orbinex
+      POSTGRES_USER: rss_orbinex
+      POSTGRES_PASSWORD: local-dev-only-change-before-sharing
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - rss_orbinex_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rss_orbinex -d rss_orbinex"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  rss_orbinex_pgdata:
