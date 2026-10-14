@@ -9,6 +9,7 @@ The project is being established incrementally. Requirements documents describe 
 - [Product and technical requirements](./REQUIREMENTS.md)
 - [Offline sync and removable-drive backup requirements](./OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md)
 - [Implementation status and remaining work](./IMPLEMENTATION_STATUS.md)
+- [Local-first development guide](./LOCAL_DEVELOPMENT.md)
 
 ## Initial technology foundation
 
@@ -54,16 +55,19 @@ The API authentication foundation is not yet a complete production identity life
 
 Protected routes require an active online bearer session. Route availability does not mean a production database, identity lifecycle, or deployment has been provisioned.
 
-## Local API setup
+## Local-first API setup
 
-1. Install Node.js 22 or newer and PostgreSQL.
-2. Copy `.env.example` to `.env` and configure the database connection.
-3. Create the development database and apply migrations in order: `001_platform_foundation.sql`, `002_auth_sessions.sql`, `003_business_domain.sql`, then `004_financial_integrity_guards.sql`, then `005_product_types.sql`.
-4. Run `npm install`.
-5. Run `npm run dev:api`.
-6. Check `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
+The repository now includes a Compose-managed PostgreSQL database for local development. No paid API keys, cloud account, public hosting, or DNS changes are required.
 
-Do not use example settings in production. Production database connections must use TLS. Migrations should be reviewed and applied through a controlled migration process.
+1. Install Node.js 22+ and Docker Compose.
+2. Copy `.env.example` to `.env` and replace the local bootstrap secret.
+3. Start PostgreSQL with `docker compose up -d postgres`.
+4. Run `npm install`, then apply `apps/api/migrations/*.sql` in filename order as described in [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md).
+5. Start the API with `npm run dev:api`.
+6. Verify `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
+7. Run `npm run typecheck`, `npm run build`, and `npm test`.
+
+The Compose database binds to `127.0.0.1` only and uses development-only credentials. Do not use these credentials or the local setup as production configuration. Production database connections must use TLS and a reviewed migration/release process.
 
 ## Planned implementation order
 
