@@ -73,9 +73,10 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
       `SELECT i.id,i.invoice_number,i.customer_id,c.display_name AS customer_name,i.status,i.currency,
               i.issue_date,i.due_date,i.subtotal::text AS subtotal,i.discount_total::text AS discount_total,
               i.tax_total::text AS tax_total,i.grand_total::text AS grand_total,i.created_at,
-              COALESCE((SELECT SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END)
-                FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id),0)::text AS paid_total
+              pay.paid_total::text AS paid_total,(i.grand_total-pay.paid_total)::text AS balance_due
        FROM invoices i JOIN customers c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
+       LEFT JOIN LATERAL (SELECT COALESCE(SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END),0) AS paid_total
+         FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id) pay ON TRUE
        WHERE i.tenant_id=$1 AND ($2::text IS NULL OR i.status=$2)
          AND ($3::date IS NULL OR i.issue_date >= $3::date) AND ($4::date IS NULL OR i.issue_date <= $4::date)
          AND ($5::text IS NULL OR i.invoice_number ILIKE '%' || $5 || '%' OR c.display_name ILIKE '%' || $5 || '%')
@@ -87,7 +88,7 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
       status: row.status, currency: row.currency, issueDate: row.issue_date, dueDate: row.due_date,
       subtotal: row.subtotal, discountTotal: row.discount_total, taxTotal: row.tax_total, grandTotal: row.grand_total,
       paidTotal: row.paid_total,
-      balanceDue: String((Number(row.grand_total) - Number(row.paid_total)).toFixed(4)),
+      balanceDue: row.balance_due,
       createdAt: new Date(row.created_at as string | Date).toISOString()
     })), limit: input.limit, offset: input.offset };
   });
@@ -100,9 +101,10 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
       `SELECT i.id,i.invoice_number,i.customer_id,c.display_name AS customer_name,i.status,i.currency,
               i.issue_date,i.due_date,i.subtotal::text AS subtotal,i.discount_total::text AS discount_total,
               i.tax_total::text AS tax_total,i.grand_total::text AS grand_total,i.posted_at,i.created_at,
-              COALESCE((SELECT SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END)
-                FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id),0)::text AS paid_total
+              pay.paid_total::text AS paid_total,(i.grand_total-pay.paid_total)::text AS balance_due
        FROM invoices i JOIN customers c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
+       LEFT JOIN LATERAL (SELECT COALESCE(SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END),0) AS paid_total
+         FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id) pay ON TRUE
        WHERE i.tenant_id=$1 AND i.id=$2`,
       [principal.tenantId,params.data.invoiceId]
     );
@@ -120,7 +122,7 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
       id: row.id, invoiceNumber: row.invoice_number, customerId: row.customer_id, customerName: row.customer_name,
       status: row.status, currency: row.currency, issueDate: row.issue_date, dueDate: row.due_date,
       subtotal: row.subtotal, discountTotal: row.discount_total, taxTotal: row.tax_total, grandTotal: row.grand_total,
-      paidTotal: row.paid_total, balanceDue: String((Number(row.grand_total) - Number(row.paid_total)).toFixed(4)),
+      paidTotal: row.paid_total, balanceDue: row.balance_due,
       postedAt: row.posted_at ? new Date(row.posted_at as string | Date).toISOString() : null,
       createdAt: new Date(row.created_at as string | Date).toISOString(),
       lines: lineResult.rows.map((line) => ({
