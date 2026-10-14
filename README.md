@@ -23,6 +23,8 @@ The project is being established incrementally. Requirements documents describe 
 - Tenant-safe customer, supplier, product, invoice, payment, stock movement, return, damage, account, and journal schema (migration 003)
 - Database guards for posted invoice immutability, append-only payments/stock movements, and balanced posted journals (migration 004)
 - Transactional stock movement API with idempotent operation IDs, tenant checks, negative-stock prevention, audit events, and balance lookup
+- Transactional draft invoice creation with tenant-scoped customer/product validation, database-calculated totals, and operation-ID idempotency
+- Invoice posting with invoice row locks, sorted per-product advisory locks, stock availability checks, atomic stock deductions, immutable posted status, audit records, and sync change events
 - Transactional sync batches, operation-ID idempotency, server-assigned entity versions, and role-based write allowlists
 - Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
@@ -42,7 +44,7 @@ Do not use example settings in production. Production database connections must 
 ## Planned implementation order
 
 1. Complete the identity lifecycle and administrator/device management.
-2. Implement transactional invoice creation/posting, payment recording, balanced journal posting, and validated domain sync adapters.
+2. Implement payment recording, balanced journal posting, and validated domain sync adapters. Invoice draft creation and posting endpoints are now present, pending database integration tests.
 3. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages; then add Windows/Android durable outbox clients.
 4. Encrypted local storage and outbox for Windows/Android clients.
 5. Accounting-aware conflict resolution and automatic sync.
