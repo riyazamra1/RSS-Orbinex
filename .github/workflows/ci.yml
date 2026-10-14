@@ -18,6 +18,10 @@ on:
       - "package.json"
       - "apps/api/package.json"
       - "apps/api/migrations/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - "compose.yaml"
+      - "scripts/**"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
 
