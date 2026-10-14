@@ -45,8 +45,8 @@ BEGIN
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END;
-$;
 
+$$;
 DROP TRIGGER IF EXISTS invoice_lines_guard_mutation ON invoice_lines;
 CREATE TRIGGER invoice_lines_guard_mutation BEFORE INSERT OR UPDATE OR DELETE ON invoice_lines
 FOR EACH ROW EXECUTE FUNCTION rss_orbinex_guard_posted_invoice_lines();
@@ -112,8 +112,8 @@ BEGIN
   IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
   RETURN NEW;
 END;
-$;
 
+$$;
 DROP TRIGGER IF EXISTS journal_entries_guard_mutation ON journal_entries;
 CREATE TRIGGER journal_entries_guard_mutation BEFORE UPDATE ON journal_entries
 FOR EACH ROW EXECUTE FUNCTION rss_orbinex_guard_posted_journal();
