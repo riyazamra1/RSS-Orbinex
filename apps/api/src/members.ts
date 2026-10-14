@@ -120,6 +120,7 @@ export function registerMembers(app: FastifyInstance, db: Database) {
         const current = membership.rows[0] as { role_key: string; status: string };
         const nextRole = input.role ?? current.role_key;
         const nextStatus = input.status ?? current.status;
+        if (principal.roleKey === "admin" && ["owner", "admin"].includes(nextRole)) throw new Error("ROLE_ESCALATION_DENIED");
         if (current.role_key === "owner" && current.status === "active" && (nextRole !== "owner" || nextStatus !== "active")) {
           const owners = await client.query(
             "SELECT COUNT(*)::int AS count FROM tenant_memberships WHERE tenant_id=$1 AND role_key='owner' AND status='active'",
@@ -148,6 +149,7 @@ export function registerMembers(app: FastifyInstance, db: Database) {
     } catch (error) {
       if (error instanceof Error && error.message === "MEMBERSHIP_NOT_FOUND") return reply.code(404).send({ error: "membership_not_found", message: "The user is not a member of this business." });
       if (error instanceof Error && error.message === "LAST_OWNER") return reply.code(409).send({ error: "last_owner_required", message: "A business must retain at least one active owner." });
+      if (error instanceof Error && error.message === "ROLE_ESCALATION_DENIED") return reply.code(403).send({ error: "role_escalation_denied", message: "Only an owner can manage owner or administrator memberships." });
       throw error;
     }
   });
