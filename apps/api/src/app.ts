@@ -8,6 +8,7 @@ import { registerInvoices } from "./invoices.js";
 import { registerAccounting } from "./accounting.js";
 import { registerPayments } from "./payments.js";
 import { registerCatalog } from "./catalog.js";
+import { registerPlatform } from "./platform.js";
 import type { AppConfig } from "./config.js";
 import type { Database } from "./db.js";
 
@@ -30,6 +31,7 @@ export function buildApp(config: AppConfig, db: Database) {
   registerAccounting(app, db);
   registerPayments(app, db);
   registerCatalog(app, db);
+  registerPlatform(app, config, db);
 
   app.get("/health/live", async () => ({ status: "ok", service: "rss-orbinex-api" }));
 
