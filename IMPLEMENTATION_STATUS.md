@@ -7,14 +7,16 @@ This is an implementation tracker, not a declaration that the full product is pr
 
 ## Build and website preview handoff
 
-- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, apply the checked-in SQL migrations against a clean PostgreSQL 17 service, type-check, build, and run API tests. The workflow is configured in source; its first run has not been independently verified in this session.
+- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, apply the checked-in SQL migrations against a clean PostgreSQL 17 service, type-check, build, run API tests, and build the API container image. The workflow is configured in source; its first run has not been independently verified in this session.
 - [x] Updated the RSS Apps website source to list RSS Orbinex, add homepage and project-detail links to the interactive preview, and validate the preview and navigation scripts.
 - [ ] Confirm that the website hosting provider deploys the updated `RSS-Apps-Website` main branch and verify `https://rssapps.net/orbinex/` in a browser. GitHub source changes do not by themselves prove the live host has updated.
 - [ ] Connect the preview to the API after a local or hosted API URL and authenticated session flow are available; current preview remains browser-local.
 
 ## Local-first development foundation
 
-- [x] Added a Compose-managed PostgreSQL 17 development service bound to `127.0.0.1` only; database data persists in a named local volume.
+- [x] Added a Compose-managed PostgreSQL 17 database and Fastify API, both exposed only on `127.0.0.1`, with persistent local database storage and container health checks.
+- [x] Added a Dockerfile and `.dockerignore`; local secrets are excluded from the image, and the runtime image prunes development dependencies.
+- [x] Added a migration runner with a database ledger so successful migration files are skipped on subsequent local starts.
 - [x] Added `LOCAL_DEVELOPMENT.md` with local setup, ordered migration, health-check, test, stop, and reset instructions.
 - [x] Updated the example environment and API development/start scripts to load the root `.env` file without adding a third-party service or API key.
 - [ ] Run the local setup on a real development machine and verify migrations, API readiness, and tests end to end. This has not been run from this repository connector session.
