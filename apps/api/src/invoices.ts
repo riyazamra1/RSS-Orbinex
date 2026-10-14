@@ -55,6 +55,82 @@ function mayPost(role: string): boolean {
 }
 
 export function registerInvoices(app: FastifyInstance, db: Database) {
+  app.get("/v1/invoices", { preHandler: authenticate(db) }, async (request, reply) => {
+    const query = z.object({
+      q: z.string().trim().max(120).optional(),
+      status: z.enum(["draft","posted","partially_paid","paid","void"]).optional(),
+      from: z.string().date().optional(),
+      to: z.string().date().optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+      offset: z.coerce.number().int().min(0).max(100000).default(0)
+    }).strict().safeParse(request.query);
+    if (!query.success || (query.data?.from && query.data?.to && query.data.from > query.data.to)) {
+      return reply.code(400).send({ error: "invalid_invoice_filter", message: "Invoice filters or date range are invalid." });
+    }
+    const principal = request.principal!;
+    const input = query.data;
+    const result = await db.query(
+      `SELECT i.id,i.invoice_number,i.customer_id,c.display_name AS customer_name,i.status,i.currency,
+              i.issue_date,i.due_date,i.subtotal::text AS subtotal,i.discount_total::text AS discount_total,
+              i.tax_total::text AS tax_total,i.grand_total::text AS grand_total,i.created_at,
+              COALESCE((SELECT SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END)
+                FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id),0)::text AS paid_total
+       FROM invoices i JOIN customers c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
+       WHERE i.tenant_id=$1 AND ($2::text IS NULL OR i.status=$2)
+         AND ($3::date IS NULL OR i.issue_date >= $3::date) AND ($4::date IS NULL OR i.issue_date <= $4::date)
+         AND ($5::text IS NULL OR i.invoice_number ILIKE '%' || $5 || '%' OR c.display_name ILIKE '%' || $5 || '%')
+       ORDER BY i.issue_date DESC,i.created_at DESC LIMIT $6 OFFSET $7`,
+      [principal.tenantId,input.status ?? null,input.from ?? null,input.to ?? null,input.q ?? null,input.limit,input.offset]
+    );
+    return { invoices: result.rows.map((row) => ({
+      id: row.id, invoiceNumber: row.invoice_number, customerId: row.customer_id, customerName: row.customer_name,
+      status: row.status, currency: row.currency, issueDate: row.issue_date, dueDate: row.due_date,
+      subtotal: row.subtotal, discountTotal: row.discount_total, taxTotal: row.tax_total, grandTotal: row.grand_total,
+      paidTotal: row.paid_total,
+      balanceDue: String((Number(row.grand_total) - Number(row.paid_total)).toFixed(4)),
+      createdAt: new Date(row.created_at as string | Date).toISOString()
+    })), limit: input.limit, offset: input.offset };
+  });
+
+  app.get("/v1/invoices/:invoiceId", { preHandler: authenticate(db) }, async (request, reply) => {
+    const params = z.object({ invoiceId: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_invoice_id", message: "A valid invoice ID is required." });
+    const principal = request.principal!;
+    const result = await db.query(
+      `SELECT i.id,i.invoice_number,i.customer_id,c.display_name AS customer_name,i.status,i.currency,
+              i.issue_date,i.due_date,i.subtotal::text AS subtotal,i.discount_total::text AS discount_total,
+              i.tax_total::text AS tax_total,i.grand_total::text AS grand_total,i.posted_at,i.created_at,
+              COALESCE((SELECT SUM(CASE WHEN p.direction='received' THEN p.amount ELSE -p.amount END)
+                FROM payments p WHERE p.tenant_id=i.tenant_id AND p.invoice_id=i.id),0)::text AS paid_total
+       FROM invoices i JOIN customers c ON c.tenant_id=i.tenant_id AND c.id=i.customer_id
+       WHERE i.tenant_id=$1 AND i.id=$2`,
+      [principal.tenantId,params.data.invoiceId]
+    );
+    if (result.rowCount !== 1) return reply.code(404).send({ error: "invoice_not_found", message: "The invoice was not found in this business." });
+    const row = result.rows[0]!;
+    const lineResult = await db.query(
+      `SELECT il.id,il.line_number,il.product_id,p.sku,il.description,il.quantity::text AS quantity,
+              il.unit_price::text AS unit_price,il.discount_amount::text AS discount_amount,
+              il.tax_amount::text AS tax_amount,il.line_total::text AS line_total
+       FROM invoice_lines il LEFT JOIN products p ON p.tenant_id=il.tenant_id AND p.id=il.product_id
+       WHERE il.tenant_id=$1 AND il.invoice_id=$2 ORDER BY il.line_number`,
+      [principal.tenantId,params.data.invoiceId]
+    );
+    return { invoice: {
+      id: row.id, invoiceNumber: row.invoice_number, customerId: row.customer_id, customerName: row.customer_name,
+      status: row.status, currency: row.currency, issueDate: row.issue_date, dueDate: row.due_date,
+      subtotal: row.subtotal, discountTotal: row.discount_total, taxTotal: row.tax_total, grandTotal: row.grand_total,
+      paidTotal: row.paid_total, balanceDue: String((Number(row.grand_total) - Number(row.paid_total)).toFixed(4)),
+      postedAt: row.posted_at ? new Date(row.posted_at as string | Date).toISOString() : null,
+      createdAt: new Date(row.created_at as string | Date).toISOString(),
+      lines: lineResult.rows.map((line) => ({
+        id: line.id, lineNumber: line.line_number, productId: line.product_id, sku: line.sku,
+        description: line.description, quantity: line.quantity, unitPrice: line.unit_price,
+        discountAmount: line.discount_amount, taxAmount: line.tax_amount, lineTotal: line.line_total
+      }))
+    } };
+  });
+
   app.post("/v1/invoices", { preHandler: authenticate(db) }, async (request, reply) => {
     const parsed = createInvoiceSchema.safeParse(request.body);
     if (!parsed.success) {
