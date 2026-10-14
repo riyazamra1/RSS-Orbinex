@@ -23,6 +23,7 @@ The project is being established incrementally. Requirements documents describe 
 - Tenant-safe customer, supplier, product, invoice, payment, stock movement, return, damage, account, and journal schema (migration 003)
 - Database guards for posted invoice immutability, append-only payments/stock movements, and balanced posted journals (migration 004)
 - Transactional stock movement API with idempotent operation IDs, tenant checks, negative-stock prevention, audit events, and balance lookup
+- Tenant-scoped customer and supplier records; product create/list/update/search, stock/service classification, stock balances, low-stock flags, and movement history
 - Transactional draft invoice creation with tenant-scoped customer/product validation, database-calculated totals, and operation-ID idempotency
 - Tenant-scoped chart-of-accounts APIs, draft journal creation, server-validated balanced journal posting, audit events, idempotency, and trial-balance reporting
 - Transactional customer payment recording with invoice balance checks, automatic balanced cash/receivables journal posting, invoice paid/part-paid status transitions, and sync events
@@ -36,7 +37,9 @@ The API authentication foundation is not yet a complete production identity life
 
 - `GET /health/live` and `GET /health/ready`
 - `POST /v1/auth/login`, `GET /v1/auth/session`, `POST /v1/auth/logout`
-- `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`
+- `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`, `GET /v1/inventory/movements/history`
+- `GET/POST/PATCH /v1/customers`, `GET /v1/customers/:id`
+- `GET/POST /v1/suppliers`, `GET/POST/PATCH /v1/products`
 - `POST /v1/invoices`, `POST /v1/invoices/:invoiceId/post`
 - `GET /v1/accounting/accounts`, `POST /v1/accounting/accounts`
 - `POST /v1/accounting/journals`, `POST /v1/accounting/journals/:journalId/post`, `GET /v1/accounting/trial-balance`
@@ -49,7 +52,7 @@ Protected routes require an active online bearer session. Route availability doe
 
 1. Install Node.js 22 or newer and PostgreSQL.
 2. Copy `.env.example` to `.env` and configure the database connection.
-3. Create the development database and apply migrations in order: `001_platform_foundation.sql`, `002_auth_sessions.sql`, `003_business_domain.sql`, then `004_financial_integrity_guards.sql`.
+3. Create the development database and apply migrations in order: `001_platform_foundation.sql`, `002_auth_sessions.sql`, `003_business_domain.sql`, then `004_financial_integrity_guards.sql`, then `005_product_types.sql`.
 4. Run `npm install`.
 5. Run `npm run dev:api`.
 6. Check `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
@@ -59,10 +62,11 @@ Do not use example settings in production. Production database connections must 
 ## Planned implementation order
 
 1. Complete the identity lifecycle and administrator/device management.
-2. Add validated domain sync adapters; current generic sync endpoints append change events and do not yet apply every entity payload to domain tables.
-3. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages; then add Windows/Android durable outbox clients.
-4. Encrypted local storage and outbox for Windows/Android clients.
-5. Accounting-aware conflict resolution and automatic sync.
-6. Administrator-controlled encrypted removable-drive backup and tested restore.
-7. Switchable object storage adapters and document handling.
-8. Automated security, migration, concurrency, recovery, and platform tests.
+2. Add supplier updates, customer/product detail endpoints, invoice/payment listing, and document/PDF rendering.
+3. Add validated domain sync adapters; current generic sync endpoints append change events and do not yet apply every entity payload to domain tables.
+4. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages; then add Windows/Android durable outbox clients.
+5. Encrypted local storage and outbox for Windows/Android clients.
+6. Accounting-aware conflict resolution and automatic sync.
+7. Administrator-controlled encrypted removable-drive backup and tested restore.
+8. Switchable object storage adapters and document handling.
+9. Automated security, migration, concurrency, recovery, and platform tests.
