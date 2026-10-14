@@ -9,10 +9,24 @@ This is an implementation tracker, not a declaration that the full product is pr
 
 - [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, run the ledger-based migration runner against a clean PostgreSQL 17 service, type-check, build, run API tests, and build the API container image.
 - [x] Fixed a mismatched PostgreSQL dollar-quote terminator in `004_financial_integrity_guards.sql`, identified after the first migration CI run failed.
-- [ ] Rerun CI on the corrected migration and confirm the full database, TypeScript, test, and Docker image build sequence passes. The latest observed run failed during migrations before the fix; a passing run is not yet confirmed.
+- [x] Verified corrected migrations, API type-check/build/tests, and Docker image build in GitHub Actions on `main` (run 38599160975, conclusion `success`, 2026-10-14). This is CI evidence, not yet proof of a deployed production environment.
 - [x] Updated the RSS Apps website source to list RSS Orbinex, add homepage and project-detail links to the interactive preview, and validate the preview and navigation scripts.
 - [ ] Confirm that the website hosting provider deploys the updated `RSS-Apps-Website` main branch and verify `https://rssapps.net/orbinex/` in a browser. GitHub source changes do not by themselves prove the live host has updated.
 - [ ] Connect the preview to the API after a local or hosted API URL and authenticated session flow are available; current preview remains browser-local.
+
+## Full accounts-software acceptance scope (user-confirmed)
+
+RSS Orbinex is required to become a complete accounts and business-management application, not only an invoice UI or dashboard. Completion must be verified by working end-to-end workflows, persisted PostgreSQL records, role/tenant enforcement, and automated tests.
+
+- [ ] Sales: customers, quotations, invoices, configurable tax/discounts, PDF/print, credit notes, sales returns, customer statements, receivables aging, and immutable finalized-document snapshots.
+- [ ] Inventory: products/services, SKUs, purchase receipts, stock ledger, transfers/adjustments, damaged-stock approvals/write-offs, low-stock alerts, returns, and an approved costing/valuation method.
+- [ ] Purchasing: suppliers, purchase orders, supplier bills, receipts, supplier returns, supplier balances, and due dates.
+- [ ] Payments: receipts, partial allocations, supplier payments, refunds/reversals, expenses, cash/bank accounts, and payment reconciliation.
+- [ ] Full double-entry accounting: chart of accounts, posting rules for each transaction type, immutable balanced journals, general ledger, trial balance, profit and loss, balance sheet, receivables/payables, and subledger reconciliation.
+- [ ] Business controls: authentication lifecycle, role permissions, tenant isolation, audit log, fiscal periods, exports, backup/restore, subscription limits, and secure shared API access.
+- [ ] Launch decisions still required before accounting-grade production claims: target tax jurisdiction and rules, base/multi-currency policy, inventory costing method, hosting/backup targets, and provider choices. Defaults must not be invented silently.
+
+A module is not complete merely because a route or screen exists. It must pass its workflow, persistence, authorization, failure/retry, and reconciliation tests.
 
 ## Local-first development foundation
 
