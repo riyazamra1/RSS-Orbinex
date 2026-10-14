@@ -24,11 +24,26 @@ The project is being established incrementally. Requirements documents describe 
 - Database guards for posted invoice immutability, append-only payments/stock movements, and balanced posted journals (migration 004)
 - Transactional stock movement API with idempotent operation IDs, tenant checks, negative-stock prevention, audit events, and balance lookup
 - Transactional draft invoice creation with tenant-scoped customer/product validation, database-calculated totals, and operation-ID idempotency
+- Tenant-scoped chart-of-accounts APIs, draft journal creation, server-validated balanced journal posting, audit events, idempotency, and trial-balance reporting
+- Transactional customer payment recording with invoice balance checks, automatic balanced cash/receivables journal posting, invoice paid/part-paid status transitions, and sync events
 - Invoice posting with invoice row locks, sorted per-product advisory locks, stock availability checks, atomic stock deductions, immutable posted status, audit records, and sync change events
 - Transactional sync batches, operation-ID idempotency, server-assigned entity versions, and role-based write allowlists
 - Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
 The API authentication foundation is not yet a complete production identity lifecycle. User provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
+
+## Implemented API routes
+
+- `GET /health/live` and `GET /health/ready`
+- `POST /v1/auth/login`, `GET /v1/auth/session`, `POST /v1/auth/logout`
+- `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`
+- `POST /v1/invoices`, `POST /v1/invoices/:invoiceId/post`
+- `GET /v1/accounting/accounts`, `POST /v1/accounting/accounts`
+- `POST /v1/accounting/journals`, `POST /v1/accounting/journals/:journalId/post`, `GET /v1/accounting/trial-balance`
+- `POST /v1/payments` (records a received payment and posts its balanced journal atomically)
+- `POST /v1/sync/push`, `GET /v1/sync/pull`
+
+Protected routes require an active online bearer session. Route availability does not mean a production database, identity lifecycle, or deployment has been provisioned.
 
 ## Local API setup
 
@@ -44,7 +59,7 @@ Do not use example settings in production. Production database connections must 
 ## Planned implementation order
 
 1. Complete the identity lifecycle and administrator/device management.
-2. Implement payment recording, balanced journal posting, and validated domain sync adapters. Invoice draft creation and posting endpoints are now present, pending database integration tests.
+2. Add validated domain sync adapters; current generic sync endpoints append change events and do not yet apply every entity payload to domain tables.
 3. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages; then add Windows/Android durable outbox clients.
 4. Encrypted local storage and outbox for Windows/Android clients.
 5. Accounting-aware conflict resolution and automatic sync.
