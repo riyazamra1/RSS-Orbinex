@@ -8,6 +8,7 @@ The project is being established incrementally. Requirements documents describe 
 
 - [Product and technical requirements](./REQUIREMENTS.md)
 - [Offline sync and removable-drive backup requirements](./OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md)
+- [Implementation status and remaining work](./IMPLEMENTATION_STATUS.md)
 
 ## Initial technology foundation
 
