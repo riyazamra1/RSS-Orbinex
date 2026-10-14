@@ -7,7 +7,9 @@ This is an implementation tracker, not a declaration that the full product is pr
 
 ## Build and website preview handoff
 
-- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, apply the checked-in SQL migrations against a clean PostgreSQL 17 service, type-check, build, run API tests, and build the API container image. The workflow is configured in source; its first run has not been independently verified in this session.
+- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, run the ledger-based migration runner against a clean PostgreSQL 17 service, type-check, build, run API tests, and build the API container image.
+- [x] Fixed a mismatched PostgreSQL dollar-quote terminator in `004_financial_integrity_guards.sql`, identified after the first migration CI run failed.
+- [ ] Rerun CI on the corrected migration and confirm the full database, TypeScript, test, and Docker image build sequence passes. The latest observed run failed during migrations before the fix; a passing run is not yet confirmed.
 - [x] Updated the RSS Apps website source to list RSS Orbinex, add homepage and project-detail links to the interactive preview, and validate the preview and navigation scripts.
 - [ ] Confirm that the website hosting provider deploys the updated `RSS-Apps-Website` main branch and verify `https://rssapps.net/orbinex/` in a browser. GitHub source changes do not by themselves prove the live host has updated.
 - [ ] Connect the preview to the API after a local or hosted API URL and authenticated session flow are available; current preview remains browser-local.
