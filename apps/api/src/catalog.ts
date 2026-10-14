@@ -48,6 +48,7 @@ const supplierUpdate = z.object({
 const productCreate = z.object({
   sku: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(200),
+  productType: z.enum(["stock", "service"]).default("stock"),
   description: z.string().trim().max(1000).optional(),
   unitCode: z.string().trim().min(1).max(24).default("each"),
   costPrice: decimal.default("0"),
@@ -58,6 +59,7 @@ const productCreate = z.object({
 const productUpdate = z.object({
   sku: z.string().trim().min(1).max(80).optional(),
   name: z.string().trim().min(1).max(200).optional(),
+  productType: z.enum(["stock", "service"]).optional(),
   description: z.union([z.string().trim().max(1000), z.null()]).optional(),
   unitCode: z.string().trim().min(1).max(24).optional(),
   costPrice: decimal.optional(),
@@ -232,7 +234,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     const principal = request.principal!;
     const { q, status, limit, offset } = parsed.data;
     const result = await db.query(
-      `SELECT p.id,p.sku,p.name,p.description,p.unit_code,p.cost_price::text AS cost_price,p.sale_price::text AS sale_price,p.reorder_level::text AS reorder_level,p.is_active,p.created_at,p.updated_at,
+      `SELECT p.id,p.sku,p.name,p.product_type,p.description,p.unit_code,p.cost_price::text AS cost_price,p.sale_price::text AS sale_price,p.reorder_level::text AS reorder_level,p.is_active,p.created_at,p.updated_at,
               COALESCE(SUM(sm.quantity_delta),0)::text AS stock_balance
        FROM products p LEFT JOIN stock_movements sm ON sm.tenant_id=p.tenant_id AND sm.product_id=p.id
        WHERE p.tenant_id=$1 AND ($2::text IS NULL OR p.is_active::text=$2 OR ($2='active' AND p.is_active=true) OR ($2='inactive' AND p.is_active=false))
@@ -240,7 +242,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
        GROUP BY p.id ORDER BY p.name,p.sku LIMIT $4 OFFSET $5`,
       [principal.tenantId,status ?? null,q ?? null,limit,offset]
     );
-    return { products: result.rows.map((row) => ({ id: row.id, sku: row.sku, name: row.name, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance, lowStock: Number(row.stock_balance) <= Number(row.reorder_level), createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
+    return { products: result.rows.map((row) => ({ id: row.id, sku: row.sku, name: row.name, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance, lowStock: row.product_type === "stock" && Number(row.stock_balance) <= Number(row.reorder_level), createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
   });
 
   app.post("/v1/products", { preHandler: authenticate(db) }, async (request, reply) => {
@@ -252,17 +254,17 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     try {
       const result = await db.transaction(async (client) => {
         const inserted = await client.query(
-          `INSERT INTO products (tenant_id,sku,name,description,unit_code,cost_price,sale_price,reorder_level,is_active)
-           VALUES ($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8::numeric,$9)
-           RETURNING id,sku,name,description,unit_code,cost_price::text AS cost_price,sale_price::text AS sale_price,reorder_level::text AS reorder_level,is_active,created_at,updated_at`,
-          [principal.tenantId,input.sku,input.name,input.description ?? null,input.unitCode,input.costPrice,input.salePrice,input.reorderLevel,input.isActive]
+          `INSERT INTO products (tenant_id,sku,name,product_type,description,unit_code,cost_price,sale_price,reorder_level,is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9::numeric,$10)
+           RETURNING id,sku,name,product_type,description,unit_code,cost_price::text AS cost_price,sale_price::text AS sale_price,reorder_level::text AS reorder_level,is_active,created_at,updated_at`,
+          [principal.tenantId,input.sku,input.name,input.productType,input.description ?? null,input.unitCode,input.costPrice,input.salePrice,input.reorderLevel,input.isActive]
         );
         const row = inserted.rows[0]!;
         await client.query("INSERT INTO audit_events (tenant_id,actor_user_id,event_type,entity_type,entity_id,outcome,metadata) VALUES ($1,$2,'product.create','product',$3,'success',$4::jsonb)",[principal.tenantId,principal.userId,row.id,JSON.stringify({ sku: input.sku })]);
-        await client.query("INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'product',$2,1,'upsert',$3::jsonb)",[principal.tenantId,row.id,JSON.stringify({ id: row.id, sku: row.sku, name: row.name, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, isActive: row.is_active })]);
+        await client.query("INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'product',$2,1,'upsert',$3::jsonb)",[principal.tenantId,row.id,JSON.stringify({ id: row.id, sku: row.sku, name: row.name, productType: row.product_type, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, isActive: row.is_active })]);
         return row;
       });
-      return reply.code(201).send({ product: { id: result.id, sku: result.sku, name: result.name, description: result.description, unitCode: result.unit_code, costPrice: result.cost_price, salePrice: result.sale_price, reorderLevel: result.reorder_level, active: result.is_active, stockBalance: "0" } });
+      return reply.code(201).send({ product: { id: result.id, sku: result.sku, name: result.name, productType: result.product_type, description: result.description, unitCode: result.unit_code, costPrice: result.cost_price, salePrice: result.sale_price, reorderLevel: result.reorder_level, active: result.is_active, stockBalance: "0" } });
     } catch (error) {
       if (isUniqueViolation(error)) return reply.code(409).send({ error: "sku_exists", message: "That SKU is already in use in this business." });
       throw error;
@@ -277,7 +279,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     if (!mayManageSuppliersAndProducts(principal.roleKey)) return reply.code(403).send({ error: "forbidden", message: "Your role cannot manage products." });
     const input = parsed.data;
     const fields: Array<[string, unknown]> = [
-      ["sku",input.sku],["name",input.name],["description",input.description],["unit_code",input.unitCode],
+      ["sku",input.sku],["name",input.name],["product_type",input.productType],["description",input.description],["unit_code",input.unitCode],
       ["cost_price",input.costPrice],["sale_price",input.salePrice],["reorder_level",input.reorderLevel],["is_active",input.isActive]
     ];
     const setFields = fields.filter((entry) => entry[1] !== undefined);
@@ -292,8 +294,8 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     try {
       const result = await db.transaction(async (client) => {
         const updated = await client.query(
-          `UPDATE products SET ${sets.join(",")},updated_at=$${updatedAtIndex}::timestamptz WHERE tenant_id=$1 AND id=$2
-           RETURNING id,sku,name,description,unit_code,cost_price::text AS cost_price,sale_price::text AS sale_price,reorder_level::text AS reorder_level,is_active,updated_at`,
+          `UPDATE products SET ${sets.join(",")},updated_at=${updatedAtIndex}::timestamptz WHERE tenant_id=$1 AND id=$2
+           RETURNING id,sku,name,product_type,description,unit_code,cost_price::text AS cost_price,sale_price::text AS sale_price,reorder_level::text AS reorder_level,is_active,updated_at`,
           values
         );
         if (updated.rowCount !== 1) throw new Error("PRODUCT_NOT_FOUND");
@@ -304,7 +306,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
         await client.query("INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'product',$2,$3,'upsert',$4::jsonb)",[principal.tenantId,row.id,version,JSON.stringify({ id: row.id, sku: row.sku, name: row.name, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, isActive: row.is_active })]);
         return row;
       });
-      return { product: { id: result.id, sku: result.sku, name: result.name, description: result.description, unitCode: result.unit_code, costPrice: result.cost_price, salePrice: result.sale_price, reorderLevel: result.reorder_level, active: result.is_active, updatedAt: new Date(result.updated_at as string | Date).toISOString() } };
+      return { product: { id: result.id, sku: result.sku, name: result.name, productType: result.product_type, description: result.description, unitCode: result.unit_code, costPrice: result.cost_price, salePrice: result.sale_price, reorderLevel: result.reorder_level, active: result.is_active, updatedAt: new Date(result.updated_at as string | Date).toISOString() } };
     } catch (error) {
       if (error instanceof Error && error.message === "PRODUCT_NOT_FOUND") return reply.code(404).send({ error: "product_not_found", message: "The product was not found in this business." });
       if (isUniqueViolation(error)) return reply.code(409).send({ error: "sku_exists", message: "That SKU is already in use in this business." });
