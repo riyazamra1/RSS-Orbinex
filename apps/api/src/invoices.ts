@@ -208,13 +208,16 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
         if (invoice.status !== "draft") throw new Error("INVOICE_NOT_DRAFT");
 
         const lineResult = await client.query(
-          "SELECT product_id,quantity::text AS quantity FROM invoice_lines WHERE tenant_id=$1 AND invoice_id=$2 ORDER BY product_id NULLS LAST,line_number",
+          `SELECT il.product_id,il.quantity::text AS quantity,p.product_type,p.is_active
+           FROM invoice_lines il LEFT JOIN products p ON p.tenant_id=il.tenant_id AND p.id=il.product_id
+           WHERE il.tenant_id=$1 AND il.invoice_id=$2 ORDER BY il.product_id NULLS LAST,il.line_number`,
           [principal.tenantId,invoiceId]
         );
         if (lineResult.rowCount === 0) throw new Error("INVOICE_EMPTY");
         const demand = new Map<string, string>();
-        for (const row of lineResult.rows as Array<{ product_id: string | null; quantity: string }>) {
-          if (row.product_id) {
+        for (const row of lineResult.rows as Array<{ product_id: string | null; quantity: string; product_type: string | null; is_active: boolean | null }>) {
+          if (row.product_id && row.is_active !== true) throw new Error("PRODUCT_NOT_FOUND");
+          if (row.product_id && row.product_type === "stock") {
             const previous = demand.get(row.product_id);
             if (previous === undefined) demand.set(row.product_id,row.quantity);
             else {
