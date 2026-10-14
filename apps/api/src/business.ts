@@ -63,10 +63,11 @@ export function registerBusiness(app: FastifyInstance, db: Database) {
         const lockKey = principal.tenantId + ":product:" + input.productId;
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [lockKey]);
         const productResult = await client.query(
-          "SELECT id FROM products WHERE tenant_id=$1 AND id=$2 AND is_active=true FOR UPDATE",
+          "SELECT id,product_type FROM products WHERE tenant_id=$1 AND id=$2 AND is_active=true FOR UPDATE",
           [principal.tenantId, input.productId]
         );
         if (productResult.rowCount !== 1) throw new Error("PRODUCT_NOT_FOUND");
+        if ((productResult.rows[0] as { product_type: string }).product_type !== "stock") throw new Error("SERVICE_ITEM_NO_STOCK");
 
         const balanceResult = await client.query(
           "SELECT (COALESCE(SUM(quantity_delta),0) + $3::numeric) AS next_balance FROM stock_movements WHERE tenant_id=$1 AND product_id=$2",
@@ -101,6 +102,7 @@ export function registerBusiness(app: FastifyInstance, db: Database) {
       if (error instanceof Error) {
         if (error.message === "IDEMPOTENCY_CONFLICT") return reply.code(409).send({ error: "idempotency_conflict", message: "The operation ID was already used with different content." });
         if (error.message === "PRODUCT_NOT_FOUND") return reply.code(404).send({ error: "product_not_found", message: "The product does not exist or is inactive." });
+        if (error.message === "SERVICE_ITEM_NO_STOCK") return reply.code(400).send({ error: "service_item_has_no_stock", message: "Stock movements are only allowed for stock-tracked products." });
         if (error.message === "INSUFFICIENT_STOCK") return reply.code(409).send({ error: "insufficient_stock", message: "This movement would make stock negative." });
       }
       throw error;
