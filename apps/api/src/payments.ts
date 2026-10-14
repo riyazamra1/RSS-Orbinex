@@ -137,6 +137,15 @@ export function registerPayments(app: FastifyInstance, db: Database) {
           "UPDATE invoices SET status=$3 WHERE tenant_id=$1 AND id=$2",
           [principal.tenantId,input.invoiceId,invoiceStatus]
         );
+        const invoiceVersionResult = await client.query(
+          "SELECT COALESCE(MAX(entity_version),0)+1 AS version FROM change_events WHERE tenant_id=$1 AND entity_type='invoice' AND entity_id=$2",
+          [principal.tenantId,input.invoiceId]
+        );
+        const invoiceVersion = Number((invoiceVersionResult.rows[0] as { version: string | number }).version);
+        await client.query(
+          "INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'invoice',$2,$3,'upsert',$4::jsonb)",
+          [principal.tenantId,input.invoiceId,invoiceVersion,JSON.stringify({ id: input.invoiceId, invoiceNumber: invoice.invoice_number, status: invoiceStatus, grandTotal: invoice.grand_total, paidTotal: newPaidTotal })]
+        );
 
         const paymentEvent = await client.query(
           "INSERT INTO change_events (tenant_id,entity_type,entity_id,entity_version,change_type,payload) VALUES ($1,'payment',$2,1,'upsert',$3::jsonb) RETURNING sequence_id",
