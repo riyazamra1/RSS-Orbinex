@@ -298,6 +298,31 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     return { products: result.rows.map((row) => ({ id: row.id, sku: row.sku, name: row.name, productType: row.product_type, description: row.description, unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price, reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance, lowStock: row.product_type === "stock" && Number(row.stock_balance) <= Number(row.reorder_level), createdAt: new Date(row.created_at as string | Date).toISOString(), updatedAt: new Date(row.updated_at as string | Date).toISOString() })), limit, offset };
   });
 
+  app.get("/v1/products/:id", { preHandler: authenticate(db) }, async (request, reply) => {
+    const parsed = idParam.safeParse(request.params);
+    if (!parsed.success) return reply.code(400).send({ error: "invalid_product_id", message: "A valid product ID is required." });
+    const principal = request.principal!;
+    const result = await db.query(
+      `SELECT p.id,p.sku,p.name,p.product_type,p.description,p.unit_code,p.cost_price::text AS cost_price,
+              p.sale_price::text AS sale_price,p.reorder_level::text AS reorder_level,p.is_active,p.created_at,p.updated_at,
+              COALESCE(SUM(sm.quantity_delta),0)::text AS stock_balance
+       FROM products p LEFT JOIN stock_movements sm ON sm.tenant_id=p.tenant_id AND sm.product_id=p.id
+       WHERE p.tenant_id=$1 AND p.id=$2
+       GROUP BY p.id`,
+      [principal.tenantId,parsed.data.id]
+    );
+    if (result.rowCount !== 1) return reply.code(404).send({ error: "product_not_found", message: "The product was not found in this business." });
+    const row = result.rows[0]!;
+    return { product: {
+      id: row.id, sku: row.sku, name: row.name, productType: row.product_type, description: row.description,
+      unitCode: row.unit_code, costPrice: row.cost_price, salePrice: row.sale_price,
+      reorderLevel: row.reorder_level, active: row.is_active, stockBalance: row.stock_balance,
+      lowStock: row.product_type === "stock" && Number(row.stock_balance) <= Number(row.reorder_level),
+      createdAt: new Date(row.created_at as string | Date).toISOString(),
+      updatedAt: new Date(row.updated_at as string | Date).toISOString()
+    } };
+  });
+
   app.post("/v1/products", { preHandler: authenticate(db) }, async (request, reply) => {
     const parsed = productCreate.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "invalid_product", message: "Provide a SKU, product name, and valid price/stock-threshold fields." });
