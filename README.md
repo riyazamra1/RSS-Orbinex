@@ -31,12 +31,13 @@ The project is being established incrementally. Requirements documents describe 
 - Transactional sync batches, operation-ID idempotency, server-assigned entity versions, and role-based write allowlists
 - Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
-The API authentication foundation is not yet a complete production identity lifecycle. Ongoing user invitations/provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
+The API authentication foundation is not yet a complete production identity lifecycle. Tenant member list/create/update and session revocation APIs now exist; email invitations, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
 
 ## Implemented API routes
 
 - `GET /health/live` and `GET /health/ready`
 - `POST /v1/platform/bootstrap` (one-time setup; requires `x-rss-bootstrap-secret` matching `BOOTSTRAP_SECRET`)
+- `GET /v1/admin/members`, `POST /v1/admin/members`, `PATCH /v1/admin/members/:userId`
 - `POST /v1/auth/login`, `GET /v1/auth/session`, `POST /v1/auth/logout`
 - `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`, `GET /v1/inventory/movements/history`
 - `GET/POST/PATCH /v1/customers`, `GET /v1/customers/:id`
