@@ -27,7 +27,7 @@ This is an implementation tracker, not a declaration that the full product is pr
 - [ ] Deploy the API and database with TLS, managed secrets, backups, monitoring, and tested restore procedures.
 - [ ] Connect the browser UI to the API. The temporary `RSS-Apps-Website/orbinex/` prototype still uses browser-local storage and is not a shared multi-user application.
 - [ ] Complete email invitations/verification, password reset, MFA, device-management UI, and production account recovery.
-- [ ] Add quotes, purchases, supplier payments, credit notes, sales-return workflow, damage approval/write-off APIs, and expense workflows.
+- [ ] Add quotes, purchases, supplier payments, credit notes, sales-return workflow, and expense workflows.
 - [ ] Add invoice/quotation PDFs, printing, document storage adapters (OCI Object Storage / Cloudflare R2), and retention policies.
 - [ ] Complete reports, including aged receivables/payables, inventory valuation using an approved costing method, profit and loss, balance sheet, and cash flow.
 - [ ] Implement subscription plans, billing integration, tenant limits, platform administration, and server-side entitlement enforcement.
