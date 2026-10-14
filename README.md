@@ -57,17 +57,16 @@ Protected routes require an active online bearer session. Route availability doe
 
 ## Local-first API setup
 
-The repository now includes a Compose-managed PostgreSQL database for local development. No paid API keys, cloud account, public hosting, or DNS changes are required.
+The repository includes a Docker Compose stack for PostgreSQL, a ledger-tracked migration runner, and the Fastify API. No paid API keys, cloud account, public hosting, or DNS changes are required.
 
-1. Install Node.js 22+ and Docker Compose.
-2. Copy `.env.example` to `.env` and replace the local bootstrap secret.
-3. Start PostgreSQL with `docker compose up -d postgres`.
-4. Run `npm install`, then apply `apps/api/migrations/*.sql` in filename order as described in [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md).
-5. Start the API with `npm run dev:api`.
-6. Verify `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
-7. Run `npm run typecheck`, `npm run build`, and `npm test`.
+1. Install Docker Compose, Node.js 22+, and npm.
+2. Copy `.env.example` to `.env` and replace `BOOTSTRAP_SECRET` with a random secret of at least 32 characters.
+3. Run `docker compose up --build -d`.
+4. Check `docker compose ps` and `docker compose logs --tail=100 migrate api`.
+5. Verify `http://127.0.0.1:4000/health/live` and `http://127.0.0.1:4000/health/ready`.
+6. Run `npm install`, `npm run typecheck`, `npm run build`, and `npm test` for host-side checks.
 
-The Compose database binds to `127.0.0.1` only and uses development-only credentials. Do not use these credentials or the local setup as production configuration. Production database connections must use TLS and a reviewed migration/release process.
+See [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md) for detailed steps and safe reset instructions. The API and PostgreSQL ports bind to loopback only. Production requires reviewed deployment configuration, TLS, managed secrets, backups, monitoring, and security/integration verification.
 
 ## Planned implementation order
 
