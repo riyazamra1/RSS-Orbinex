@@ -255,8 +255,8 @@ export function registerInvoices(app: FastifyInstance, db: Database) {
         const totals = totalsResult.rows[0] as { subtotal: string; discount_total: string; tax_total: string; grand_total: string };
         for (const [productId,quantity] of demand) {
           const lineCost = await client.query(
-            "SELECT COALESCE(SUM(quantity * unit_price) / NULLIF(SUM(quantity),0),0)::text AS unit_cost FROM invoice_lines WHERE tenant_id=$1 AND invoice_id=$2 AND product_id=$3",
-            [principal.tenantId,invoiceId,productId]
+            "SELECT cost_price::text AS unit_cost FROM products WHERE tenant_id=$1 AND id=$2",
+            [principal.tenantId,productId]
           );
           await client.query(
             `INSERT INTO stock_movements (tenant_id,product_id,movement_type,quantity_delta,unit_cost,source_type,source_id,reason,recorded_by)
