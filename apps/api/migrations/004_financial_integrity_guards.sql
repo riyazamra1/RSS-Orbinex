@@ -1,4 +1,5 @@
 -- Guard immutable financial history and enforce balanced posted journals.
+-- Keep every PL/pgSQL body closed with the matching $ delimiter.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION rss_orbinex_guard_invoice_update()
