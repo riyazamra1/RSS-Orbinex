@@ -25,6 +25,7 @@ The project is being established incrementally. Requirements documents describe 
 - Database guards for posted invoice immutability, append-only payments/stock movements, and balanced posted journals (migration 004)
 - Transactional stock movement API with idempotent operation IDs, tenant checks, negative-stock prevention, audit events, and balance lookup
 - Tenant-scoped customer and supplier records; product create/list/update/search, stock/service classification, stock balances, low-stock flags, and movement history
+- Stock damage reporting, owner/admin approval with separation of duties, rejection, and idempotent stock write-off
 - Transactional draft invoice creation with tenant-scoped customer/product validation, database-calculated totals, and operation-ID idempotency
 - Tenant-scoped chart-of-accounts APIs, draft journal creation, server-validated balanced journal posting, audit events, idempotency, and trial-balance reporting
 - Transactional customer payment recording with invoice balance checks, automatic balanced cash/receivables journal posting, invoice paid/part-paid status transitions, and sync events
@@ -41,6 +42,7 @@ The API authentication foundation is not yet a complete production identity life
 - `GET /v1/admin/members`, `POST /v1/admin/members`, `PATCH /v1/admin/members/:userId`
 - `POST /v1/auth/login`, `GET /v1/auth/session`, `POST /v1/auth/logout`
 - `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`, `GET /v1/inventory/movements/history`
+- `GET/POST /v1/inventory/damages`, `POST /v1/inventory/damages/:damageId/approve`, `POST /v1/inventory/damages/:damageId/reject`, `POST /v1/inventory/damages/:damageId/write-off`
 - `GET/POST/PATCH /v1/customers`, `GET /v1/customers/:id`
 - `GET/POST/PATCH /v1/suppliers`, `GET/POST/PATCH /v1/products`
 - `GET /v1/suppliers/:id`, `GET /v1/products/:id`
