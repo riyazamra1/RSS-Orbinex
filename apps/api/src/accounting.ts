@@ -6,7 +6,6 @@ import type { Database } from "./db.js";
 
 const money = z.string()
   .regex(/^(?:0|[1-9][0-9]{0,14})(?:\.[0-9]{1,4})?$/, "Use a non-negative decimal with at most four fractional digits");
-const positiveMoney = money.refine((value) => !/^0(?:\.0{1,4})?$/.test(value), "Amount must be positive");
 const accountType = z.enum(["asset", "liability", "equity", "income", "expense"]);
 const accountSchema = z.object({
   code: z.string().trim().min(1).max(32).regex(/^[A-Za-z0-9._-]+$/),
@@ -281,8 +280,8 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     const principal = request.principal!;
     const result = await db.query(
       `SELECT a.id,a.account_code,a.name,a.account_type,
-              COALESCE(SUM(jl.debit),0)::text AS debit_total,
-              COALESCE(SUM(jl.credit),0)::text AS credit_total
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit ELSE 0 END),0)::text AS debit_total,
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit ELSE 0 END),0)::text AS credit_total
        FROM accounts a
        LEFT JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
        LEFT JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
