@@ -5,6 +5,13 @@
 
 This is an implementation tracker, not a declaration that the full product is production-ready. A route passing TypeScript/build/unit CI does not replace PostgreSQL integration, security, concurrency, recovery, or end-to-end testing.
 
+## Build and website preview handoff
+
+- [x] Added GitHub Actions workflow `.github/workflows/ci.yml` to install dependencies, apply the checked-in SQL migrations against a clean PostgreSQL 17 service, type-check, build, and run API tests. The workflow is configured in source; its first run has not been independently verified in this session.
+- [x] Updated the RSS Apps website source to list RSS Orbinex, add homepage and project-detail links to the interactive preview, and validate the preview and navigation scripts.
+- [ ] Confirm that the website hosting provider deploys the updated `RSS-Apps-Website` main branch and verify `https://rssapps.net/orbinex/` in a browser. GitHub source changes do not by themselves prove the live host has updated.
+- [ ] Connect the preview to the API after a local or hosted API URL and authenticated session flow are available; current preview remains browser-local.
+
 ## Local-first development foundation
 
 - [x] Added a Compose-managed PostgreSQL 17 development service bound to `127.0.0.1` only; database data persists in a named local volume.
