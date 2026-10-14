@@ -1,72 +1,68 @@
 # RSS Orbinex — Local-first development
 
-This setup runs the API and PostgreSQL on your own computer. It needs no paid API keys, AI provider keys, cloud account, public server, or DNS changes. The PostgreSQL port is bound to loopback only; it is not exposed to your LAN or the internet.
+This setup runs PostgreSQL, a migration runner, and the Fastify API on your own computer. It needs no paid API keys, AI provider keys, cloud account, public server, or DNS changes. The API and database ports bind to loopback only and are not exposed to your LAN or the internet.
 
 ## Prerequisites
 
-- Node.js 22 or newer and npm
-- Docker Engine/Desktop with the Compose plugin
+- Docker Engine/Desktop with the Docker Compose plugin
+- Node.js 22+ and npm (for running tests on the host)
 - Git, if cloning the repository
 
-## Start from a clean local checkout
+## Start the full local stack
 
-Run these commands from the repository root:
+From the repository root:
 
 ```sh
 cp .env.example .env
 ```
 
-Set a unique local bootstrap secret in `.env` (at least 32 characters). Do not commit `.env` or reuse this development secret in production.
+Edit `.env` and replace `BOOTSTRAP_SECRET` with a unique random value of at least 32 characters. Keep `.env` private; it is ignored by Git and excluded from the API image.
 
-Start the local database:
+Start PostgreSQL, apply any pending migrations through the migration ledger, build the API image, and start the API:
 
 ```sh
-docker compose up -d postgres
+docker compose up --build -d
 docker compose ps
+docker compose logs --tail=100 migrate api
 ```
 
-Install dependencies and apply the checked-in migrations in filename order:
-
-```sh
-npm install
-for migration in apps/api/migrations/*.sql; do
-  echo "Applying $migration"
-  docker compose exec -T postgres psql -U rss_orbinex -d rss_orbinex -v ON_ERROR_STOP=1 -f - < "$migration" || exit 1
-done
-```
-
-The migration loop is intended for a fresh local development database. Do not use it as a production migration process or blindly rerun it against a database with existing data.
-
-Start the API:
-
-```sh
-npm run dev:api
-```
-
-In another terminal, verify local health:
+The local API is available at `http://127.0.0.1:4000`. Check health:
 
 ```sh
 curl -fsS http://127.0.0.1:4000/health/live
 curl -fsS http://127.0.0.1:4000/health/ready
 ```
 
-Run the current checks:
+The API container waits for PostgreSQL and the migration service. The migration runner records successfully applied migration filenames in `rss_orbinex_schema_migrations` and skips those on later starts. This is a local-development convenience, not a substitute for reviewed production migration releases.
+
+## Run code checks on the host
+
+Install dependencies and run the current API checks:
 
 ```sh
+npm install
 npm run typecheck
 npm run build
 npm test
 ```
 
+GitHub Actions is also configured to run these checks and apply the migrations against a clean PostgreSQL 17 database. Verify the workflow result in the repository's Actions tab before treating a commit as CI-approved.
+
+## Bootstrap the first tenant
+
+The API includes a one-time owner bootstrap endpoint. After the API and migrations are healthy, send a request to `POST /v1/platform/bootstrap` with the header `x-rss-bootstrap-secret` matching the local `BOOTSTRAP_SECRET` and the request body accepted by the current bootstrap route. The endpoint creates the initial tenant and owner and seeds a starter chart of accounts.
+
+Bootstrap is not a complete production identity lifecycle. Do not expose this development API publicly or reuse the local secret in a production environment.
+
 ## Stop and reset
 
-Stop PostgreSQL but keep its data:
+Stop containers while retaining the local database:
 
 ```sh
 docker compose down
 ```
 
-**Destructive local reset:** this deletes the local PostgreSQL volume and all data in it:
+**Destructive local reset:** deletes the PostgreSQL volume and all local data:
 
 ```sh
 docker compose down -v
@@ -74,15 +70,11 @@ docker compose down -v
 
 Do not run the destructive reset unless you intend to erase the local development database.
 
-## Bootstrap the first tenant
-
-The API includes a one-time owner bootstrap endpoint. Generate a random secret locally and put it in `.env` as `BOOTSTRAP_SECRET`. Once the API and migrations are running, call the bootstrap endpoint with that secret and the request body required by the current bootstrap route. The endpoint is not a replacement for the pending full identity lifecycle. Never expose this development API publicly.
-
 ## Local-first boundaries
 
-- No paid API keys are required for the current backend foundation.
-- The API and database run locally; this does not yet make a shared multi-user cloud service.
-- The browser preview in `RSS-Apps-Website/orbinex/` still uses browser-local storage and is not connected to this API.
-- Local development credentials are examples only. Change them before sharing the environment.
-- Production still needs reviewed migrations, TLS, managed secrets, backups and restore tests, monitoring, security/integration tests, and a deliberate deployment decision.
+- No paid third-party API keys are required for this stack.
+- The API and database run locally; this is not yet a shared multi-user cloud service.
+- The browser preview in the separate `RSS-Apps-Website/orbinex/` directory still uses browser-local demo data and is not connected to this API.
+- Example credentials are for local development only. Change the bootstrap secret before use and never commit `.env`.
+- Production still needs TLS, managed secrets, backups and tested restore, monitoring, reviewed migration/release procedures, full security/integration tests, and a deliberate deployment decision.
 - Preserve the existing `rssapps.net` website and DNS. Do not deploy to the root domain or change DNS as part of local development.
