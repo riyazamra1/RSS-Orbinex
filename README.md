@@ -16,7 +16,7 @@ The project is being established incrementally. Requirements documents describe 
 - PostgreSQL via the pg driver
 - Zod environment validation
 - API liveness/readiness endpoints
-- Online login, server-validated session inspection, and online logout endpoints
+- One-time, secret-protected initial tenant/owner bootstrap that seeds a default chart of accounts; online login, server-validated session inspection, and online logout endpoints
 - Opaque random bearer sessions stored as SHA-256 hashes, with expiry and server-side revocation
 - Argon2id password verification and API rate limiting
 - Tenant-scoped sync push/pull endpoints using an append-only change journal
@@ -31,19 +31,21 @@ The project is being established incrementally. Requirements documents describe 
 - Transactional sync batches, operation-ID idempotency, server-assigned entity versions, and role-based write allowlists
 - Initial tenant, identity, device, session, idempotency, change-event, and audit schema
 
-The API authentication foundation is not yet a complete production identity lifecycle. User provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
+The API authentication foundation is not yet a complete production identity lifecycle. Ongoing user invitations/provisioning, password reset, MFA, admin/device management UI, formal migration tooling, and deployment hardening remain pending. Do not expose the service publicly until those controls and production monitoring are complete.
 
 ## Implemented API routes
 
 - `GET /health/live` and `GET /health/ready`
+- `POST /v1/platform/bootstrap` (one-time setup; requires `x-rss-bootstrap-secret` matching `BOOTSTRAP_SECRET`)
 - `POST /v1/auth/login`, `GET /v1/auth/session`, `POST /v1/auth/logout`
 - `POST /v1/inventory/movements`, `GET /v1/inventory/products/:productId/balance`, `GET /v1/inventory/movements/history`
 - `GET/POST/PATCH /v1/customers`, `GET /v1/customers/:id`
-- `GET/POST /v1/suppliers`, `GET/POST/PATCH /v1/products`
-- `POST /v1/invoices`, `POST /v1/invoices/:invoiceId/post`
+- `GET/POST/PATCH /v1/suppliers`, `GET/POST/PATCH /v1/products`
+- `GET /v1/suppliers/:id`, `GET /v1/products/:id`
+- `GET /v1/invoices`, `GET /v1/invoices/:invoiceId`, `POST /v1/invoices`, `POST /v1/invoices/:invoiceId/post`
 - `GET /v1/accounting/accounts`, `POST /v1/accounting/accounts`
 - `POST /v1/accounting/journals`, `POST /v1/accounting/journals/:journalId/post`, `GET /v1/accounting/trial-balance`
-- `POST /v1/payments` (records a received payment and posts its balanced journal atomically)
+- `GET /v1/payments`, `POST /v1/payments` (records a received payment and posts its balanced journal atomically)
 - `POST /v1/sync/push`, `GET /v1/sync/pull`
 
 Protected routes require an active online bearer session. Route availability does not mean a production database, identity lifecycle, or deployment has been provisioned.
@@ -62,7 +64,7 @@ Do not use example settings in production. Production database connections must 
 ## Planned implementation order
 
 1. Complete the identity lifecycle and administrator/device management.
-2. Add supplier updates, customer/product detail endpoints, invoice/payment listing, and document/PDF rendering.
+2. Add PDF/print rendering for invoices and quotations, credit notes, purchase documents, and statement generation.
 3. Add validated domain sync adapters; current generic sync endpoints append change events and do not yet apply every entity payload to domain tables.
 4. Add conflict-aware rules for posted invoices, payments, stock movements, returns, and damages; then add Windows/Android durable outbox clients.
 5. Encrypted local storage and outbox for Windows/Android clients.
