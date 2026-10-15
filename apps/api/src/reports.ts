@@ -26,8 +26,8 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
     const { from = null, to = null } = parsed.data;
     const result = await db.query(
       `SELECT a.id AS account_id, a.account_code, a.name, a.account_type,
-              COALESCE(SUM(CASE WHEN a.account_type = 'income' THEN jl.credit - jl.debit
-                                WHEN a.account_type = 'expense' THEN jl.debit - jl.credit
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL AND a.account_type = 'income' THEN jl.credit - jl.debit
+                                WHEN je.id IS NOT NULL AND a.account_type = 'expense' THEN jl.debit - jl.credit
                                 ELSE 0 END), 0)::text AS amount
        FROM accounts a
        LEFT JOIN journal_lines jl ON jl.tenant_id = a.tenant_id AND jl.account_id = a.id
@@ -86,8 +86,8 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
     const asOf = parsed.data.asOf ?? null;
     const result = await db.query(
       `SELECT a.id AS account_id, a.account_code, a.name, a.account_type,
-              COALESCE(SUM(CASE WHEN a.account_type IN ('asset', 'expense') THEN jl.debit - jl.credit
-                                ELSE jl.credit - jl.debit END), 0)::text AS amount
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL AND a.account_type IN ('asset', 'expense') THEN jl.debit - jl.credit
+                                WHEN je.id IS NOT NULL THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS amount
        FROM accounts a
        LEFT JOIN journal_lines jl ON jl.tenant_id = a.tenant_id AND jl.account_id = a.id
        LEFT JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id
