@@ -110,7 +110,7 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
          COALESCE(SUM(CASE WHEN a.account_type = 'asset' THEN jl.debit - jl.credit ELSE 0 END), 0)::text AS assets,
          COALESCE(SUM(CASE WHEN a.account_type = 'liability' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS liabilities,
          COALESCE(SUM(CASE WHEN a.account_type = 'equity' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS equity,
-         COALESCE(SUM(CASE WHEN a.account_type IN ('liability', 'equity') THEN jl.credit - jl.debit WHEN a.account_type = 'asset' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS balance_difference
+         COALESCE(SUM(CASE WHEN a.account_type = 'asset' THEN jl.debit - jl.credit WHEN a.account_type IN ('liability', 'equity') THEN jl.debit - jl.credit ELSE 0 END), 0)::text AS balance_difference
        FROM journal_lines jl
        JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id AND je.status = 'posted'
        JOIN accounts a ON a.tenant_id = jl.tenant_id AND a.id = jl.account_id
