@@ -52,7 +52,8 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
     const totals = await db.query(
       `SELECT
          COALESCE(SUM(CASE WHEN a.account_type = 'income' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS income,
-         COALESCE(SUM(CASE WHEN a.account_type = 'expense' THEN jl.debit - jl.credit ELSE 0 END), 0)::text AS expenses
+         COALESCE(SUM(CASE WHEN a.account_type = 'expense' THEN jl.debit - jl.credit ELSE 0 END), 0)::text AS expenses,
+         COALESCE(SUM(CASE WHEN a.account_type = 'income' THEN jl.credit - jl.debit WHEN a.account_type = 'expense' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS net_profit
        FROM journal_lines jl
        JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id AND je.status = 'posted'
        JOIN accounts a ON a.tenant_id = jl.tenant_id AND a.id = jl.account_id
@@ -60,7 +61,7 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
          AND ($3::date IS NULL OR je.entry_date <= $3::date)`,
       [tenantId, from, to]
     );
-    const total = totals.rows[0] as { income: string; expenses: string };
+    const total = totals.rows[0] as { income: string; expenses: string; net_profit: string };
     return {
       report: "profit-and-loss",
       from,
@@ -70,7 +71,7 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
       totals: {
         income: total.income,
         expenses: total.expenses,
-        netProfit: (Number(total.income) - Number(total.expenses)).toFixed(4)
+        netProfit: total.net_profit
       }
     };
   });
@@ -108,14 +109,15 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
       `SELECT
          COALESCE(SUM(CASE WHEN a.account_type = 'asset' THEN jl.debit - jl.credit ELSE 0 END), 0)::text AS assets,
          COALESCE(SUM(CASE WHEN a.account_type = 'liability' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS liabilities,
-         COALESCE(SUM(CASE WHEN a.account_type = 'equity' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS equity
+         COALESCE(SUM(CASE WHEN a.account_type = 'equity' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS equity,
+         COALESCE(SUM(CASE WHEN a.account_type IN ('liability', 'equity') THEN jl.credit - jl.debit WHEN a.account_type = 'asset' THEN jl.credit - jl.debit ELSE 0 END), 0)::text AS balance_difference
        FROM journal_lines jl
        JOIN journal_entries je ON je.tenant_id = jl.tenant_id AND je.id = jl.journal_entry_id AND je.status = 'posted'
        JOIN accounts a ON a.tenant_id = jl.tenant_id AND a.id = jl.account_id
        WHERE jl.tenant_id = $1 AND ($2::date IS NULL OR je.entry_date <= $2::date)`,
       [tenantId, asOf]
     );
-    const total = totals.rows[0] as { assets: string; liabilities: string; equity: string };
+    const total = totals.rows[0] as { assets: string; liabilities: string; equity: string; balance_difference: string };
     return {
       report: "balance-sheet",
       asOf,
@@ -125,8 +127,7 @@ export function registerFinancialReports(app: FastifyInstance, db: Database) {
         assets: total.assets,
         liabilities: total.liabilities,
         equity: total.equity,
-        liabilitiesAndEquity: (Number(total.liabilities) + Number(total.equity)).toFixed(4),
-        differenceBeforeCurrentEarnings: (Number(total.assets) - Number(total.liabilities) - Number(total.equity)).toFixed(4)
+        balanceDifferenceBeforeCurrentEarnings: total.balance_difference
       },
       note: "Current-period earnings are returned by the profit-and-loss report and are not automatically closed into equity."
     };
