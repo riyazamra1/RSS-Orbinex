@@ -316,7 +316,9 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     const result = await db.query(
       `SELECT a.id,a.account_code,a.name,a.account_type,
               COALESCE(SUM(jl.debit),0)::text AS debit_total,
-              COALESCE(SUM(jl.credit),0)::text AS credit_total
+              COALESCE(SUM(jl.credit),0)::text AS credit_total,
+              COALESCE(SUM(CASE WHEN a.account_type='income' THEN jl.credit-jl.debit
+                                ELSE jl.debit-jl.credit END),0)::text AS amount
        FROM accounts a
        JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
        JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
@@ -327,22 +329,32 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
        ORDER BY a.account_type,a.account_code`,
       [principal.tenantId, query.data.from, query.data.to]
     );
-    const lines = result.rows.map((row) => {
-      const debit = String(row.debit_total);
-      const credit = String(row.credit_total);
-      return {
-        accountId: row.id, code: row.account_code, name: row.name, type: row.account_type,
-        debit, credit,
-        amount: row.account_type === "income"
-          ? (Number(credit) - Number(debit)).toFixed(4)
-          : (Number(debit) - Number(credit)).toFixed(4)
-      };
-    });
-    const income = lines.filter((line) => line.type === "income").reduce((sum, line) => sum + Number(line.amount), 0);
-    const expenses = lines.filter((line) => line.type === "expense").reduce((sum, line) => sum + Number(line.amount), 0);
+    const lines = result.rows.map((row) => ({
+      accountId: row.id, code: row.account_code, name: row.name, type: row.account_type,
+      debit: String(row.debit_total), credit: String(row.credit_total), amount: String(row.amount)
+    }));
+    const totals = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN a.account_type='income' THEN jl.credit-jl.debit ELSE 0 END),0)::text AS income,
+         COALESCE(SUM(CASE WHEN a.account_type='expense' THEN jl.debit-jl.credit ELSE 0 END),0)::text AS expenses
+       FROM journal_lines jl
+       JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
+       JOIN accounts a ON a.tenant_id=jl.tenant_id AND a.id=jl.account_id
+       WHERE jl.tenant_id=$1 AND je.status='posted' AND je.entry_date >= $2::date AND je.entry_date <= $3::date
+         AND a.account_type IN ('income','expense')`,
+      [principal.tenantId, query.data.from, query.data.to]
+    );
+    const totalsRow = totals.rows[0] as { income: string; expenses: string };
+    const income = String(totalsRow.income);
+    const expenses = String(totalsRow.expenses);
+    const net = await db.query(
+      "SELECT ($1::numeric-$2::numeric)::text AS net_profit",
+      [income, expenses]
+    );
     return {
-      from: query.data.from, to: query.data.to, currencyPolicy: "Amounts are reported in account currency without cross-currency conversion.",
-      income: income.toFixed(4), expenses: expenses.toFixed(4), netProfit: (income - expenses).toFixed(4), lines
+      from: query.data.from, to: query.data.to,
+      currencyPolicy: "Amounts are reported in account currency without cross-currency conversion.",
+      income, expenses, netProfit: String((net.rows[0] as { net_profit: string }).net_profit), lines
     };
   });
 
@@ -355,7 +367,12 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     const result = await db.query(
       `SELECT a.id,a.account_code,a.name,a.account_type,
               COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit ELSE 0 END),0)::text AS debit_total,
-              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit ELSE 0 END),0)::text AS credit_total
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit ELSE 0 END),0)::text AS credit_total,
+              COALESCE(SUM(CASE
+                WHEN je.id IS NULL THEN 0
+                WHEN a.account_type='asset' THEN jl.debit-jl.credit
+                ELSE jl.credit-jl.debit
+              END),0)::text AS balance
        FROM accounts a
        LEFT JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
        LEFT JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
@@ -366,32 +383,46 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
        ORDER BY a.account_type,a.account_code`,
       [principal.tenantId, query.data.asOf]
     );
-    const lines = result.rows.map((row) => {
-      const debit = Number(row.debit_total);
-      const credit = Number(row.credit_total);
-      const type = String(row.account_type);
-      const balance = type === "asset" ? debit - credit : credit - debit;
-      return { accountId: row.id, code: row.account_code, name: row.name, type, balance: balance.toFixed(4) };
-    });
-    const earningsResult = await db.query(
-      `SELECT COALESCE(SUM(CASE WHEN a.account_type='income' THEN jl.credit-jl.debit
-                                WHEN a.account_type='expense' THEN jl.debit-jl.credit ELSE 0 END),0)::text AS retained_earnings
+    const lines = result.rows.map((row) => ({
+      accountId: row.id, code: row.account_code, name: row.name,
+      type: row.account_type, balance: String(row.balance)
+    }));
+    const totalsResult = await db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN a.account_type='asset' THEN jl.debit-jl.credit ELSE 0 END),0)::text AS assets,
+         COALESCE(SUM(CASE WHEN a.account_type='liability' THEN jl.credit-jl.debit ELSE 0 END),0)::text AS liabilities,
+         COALESCE(SUM(CASE WHEN a.account_type='equity' THEN jl.credit-jl.debit ELSE 0 END),0)::text AS equity,
+         COALESCE(SUM(CASE WHEN a.account_type='income' THEN jl.credit-jl.debit
+                           WHEN a.account_type='expense' THEN jl.debit-jl.credit ELSE 0 END),0)::text AS retained_earnings
        FROM journal_lines jl
        JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
        JOIN accounts a ON a.tenant_id=jl.tenant_id AND a.id=jl.account_id
        WHERE jl.tenant_id=$1 AND je.status='posted' AND je.entry_date <= $2::date
-         AND a.account_type IN ('income','expense')`,
+         AND a.account_type IN ('asset','liability','equity','income','expense')`,
       [principal.tenantId, query.data.asOf]
     );
-    const retainedEarnings = Number((earningsResult.rows[0] as { retained_earnings: string }).retained_earnings);
-    const assets = lines.filter((line) => line.type === "asset").reduce((sum, line) => sum + Number(line.balance), 0);
-    const liabilities = lines.filter((line) => line.type === "liability").reduce((sum, line) => sum + Number(line.balance), 0);
-    const equity = lines.filter((line) => line.type === "equity").reduce((sum, line) => sum + Number(line.balance), 0);
+    const totals = totalsResult.rows[0] as {
+      assets: string; liabilities: string; equity: string; retained_earnings: string;
+    };
+    const combined = await db.query(
+      `SELECT ($1::numeric+$2::numeric+$3::numeric)::text AS liabilities_and_equity,
+              ($4::numeric-$1::numeric-$2::numeric-$3::numeric)::text AS difference`,
+      [totals.liabilities, totals.equity, totals.retained_earnings, totals.assets]
+    );
+    const combinedRow = combined.rows[0] as { liabilities_and_equity: string; difference: string };
+    const toUnits = (value: string): bigint => {
+      const match = /^(-?)(\\d+)(?:\\.(\\d*))?$/.exec(value);
+      if (!match) throw new Error("Unexpected decimal returned by PostgreSQL.");
+      const fraction = (match[3] ?? "").padEnd(4, "0").slice(0, 4);
+      const units = BigInt(match[2]!) * 10000n + BigInt(fraction || "0");
+      return match[1] === "-" ? -units : units;
+    };
     return {
-      asOf: query.data.asOf, assets: assets.toFixed(4), liabilities: liabilities.toFixed(4),
-      equity: (equity + retainedEarnings).toFixed(4), retainedEarnings: retainedEarnings.toFixed(4),
-      liabilitiesAndEquity: (liabilities + equity + retainedEarnings).toFixed(4),
-      balanced: Math.abs(assets - liabilities - equity - retainedEarnings) < 0.0001,
+      asOf: query.data.asOf, assets: String(totals.assets), liabilities: String(totals.liabilities),
+      equity: String((await db.query("SELECT ($1::numeric+$2::numeric)::text AS equity", [totals.equity, totals.retained_earnings])).rows[0]!.equity),
+      retainedEarnings: String(totals.retained_earnings),
+      liabilitiesAndEquity: String(combinedRow.liabilities_and_equity),
+      balanced: toUnits(String(combinedRow.difference)) === 0n,
       lines
     };
   });
