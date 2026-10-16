@@ -411,7 +411,7 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     );
     const combinedRow = combined.rows[0] as { liabilities_and_equity: string; difference: string };
     const toUnits = (value: string): bigint => {
-      const match = /^(-?)(\\d+)(?:\\.(\\d*))?$/.exec(value);
+      const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(value);
       if (!match) throw new Error("Unexpected decimal returned by PostgreSQL.");
       const fraction = (match[3] ?? "").padEnd(4, "0").slice(0, 4);
       const units = BigInt(match[2]!) * 10000n + BigInt(fraction || "0");
