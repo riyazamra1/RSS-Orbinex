@@ -306,4 +306,93 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     const totals = totalsResult.rows[0] as { debit_total: string; credit_total: string };
     return { from: query.data.from ?? null, to: query.data.to ?? null, accounts, totals: { debit: totals.debit_total, credit: totals.credit_total } };
   });
+
+  app.get("/v1/accounting/profit-and-loss", { preHandler: authenticate(db) }, async (request, reply) => {
+    const query = z.object({ from: z.string().date(), to: z.string().date() }).strict().safeParse(request.query);
+    if (!query.success || query.data.from > query.data.to) {
+      return reply.code(400).send({ error: "invalid_profit_and_loss_range", message: "Provide valid from and to dates, with from not after to." });
+    }
+    const principal = request.principal!;
+    const result = await db.query(
+      `SELECT a.id,a.account_code,a.name,a.account_type,
+              COALESCE(SUM(jl.debit),0)::text AS debit_total,
+              COALESCE(SUM(jl.credit),0)::text AS credit_total
+       FROM accounts a
+       JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
+       JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
+       WHERE a.tenant_id=$1 AND a.is_active=true
+         AND a.account_type IN ('income','expense') AND je.status='posted'
+         AND je.entry_date >= $2::date AND je.entry_date <= $3::date
+       GROUP BY a.id,a.account_code,a.name,a.account_type
+       ORDER BY a.account_type,a.account_code`,
+      [principal.tenantId, query.data.from, query.data.to]
+    );
+    const lines = result.rows.map((row) => {
+      const debit = String(row.debit_total);
+      const credit = String(row.credit_total);
+      return {
+        accountId: row.id, code: row.account_code, name: row.name, type: row.account_type,
+        debit, credit,
+        amount: row.account_type === "income"
+          ? (Number(credit) - Number(debit)).toFixed(4)
+          : (Number(debit) - Number(credit)).toFixed(4)
+      };
+    });
+    const income = lines.filter((line) => line.type === "income").reduce((sum, line) => sum + Number(line.amount), 0);
+    const expenses = lines.filter((line) => line.type === "expense").reduce((sum, line) => sum + Number(line.amount), 0);
+    return {
+      from: query.data.from, to: query.data.to, currencyPolicy: "Amounts are reported in account currency without cross-currency conversion.",
+      income: income.toFixed(4), expenses: expenses.toFixed(4), netProfit: (income - expenses).toFixed(4), lines
+    };
+  });
+
+  app.get("/v1/accounting/balance-sheet", { preHandler: authenticate(db) }, async (request, reply) => {
+    const query = z.object({ asOf: z.string().date() }).strict().safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send({ error: "invalid_balance_sheet_date", message: "Provide a valid asOf date." });
+    }
+    const principal = request.principal!;
+    const result = await db.query(
+      `SELECT a.id,a.account_code,a.name,a.account_type,
+              COALESCE(SUM(jl.debit),0)::text AS debit_total,
+              COALESCE(SUM(jl.credit),0)::text AS credit_total
+       FROM accounts a
+       LEFT JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
+       LEFT JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
+         AND je.status='posted' AND je.entry_date <= $2::date
+       WHERE a.tenant_id=$1 AND a.is_active=true
+         AND a.account_type IN ('asset','liability','equity')
+       GROUP BY a.id,a.account_code,a.name,a.account_type
+       ORDER BY a.account_type,a.account_code`,
+      [principal.tenantId, query.data.asOf]
+    );
+    const lines = result.rows.map((row) => {
+      const debit = Number(row.debit_total);
+      const credit = Number(row.credit_total);
+      const type = String(row.account_type);
+      const balance = type === "asset" ? debit - credit : credit - debit;
+      return { accountId: row.id, code: row.account_code, name: row.name, type, balance: balance.toFixed(4) };
+    });
+    const earningsResult = await db.query(
+      `SELECT COALESCE(SUM(CASE WHEN a.account_type='income' THEN jl.credit-jl.debit
+                                WHEN a.account_type='expense' THEN jl.debit-jl.credit ELSE 0 END),0)::text AS retained_earnings
+       FROM journal_lines jl
+       JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
+       JOIN accounts a ON a.tenant_id=jl.tenant_id AND a.id=jl.account_id
+       WHERE jl.tenant_id=$1 AND je.status='posted' AND je.entry_date <= $2::date
+         AND a.account_type IN ('income','expense')`,
+      [principal.tenantId, query.data.asOf]
+    );
+    const retainedEarnings = Number((earningsResult.rows[0] as { retained_earnings: string }).retained_earnings);
+    const assets = lines.filter((line) => line.type === "asset").reduce((sum, line) => sum + Number(line.balance), 0);
+    const liabilities = lines.filter((line) => line.type === "liability").reduce((sum, line) => sum + Number(line.balance), 0);
+    const equity = lines.filter((line) => line.type === "equity").reduce((sum, line) => sum + Number(line.balance), 0);
+    return {
+      asOf: query.data.asOf, assets: assets.toFixed(4), liabilities: liabilities.toFixed(4),
+      equity: (equity + retainedEarnings).toFixed(4), retainedEarnings: retainedEarnings.toFixed(4),
+      liabilitiesAndEquity: (liabilities + equity + retainedEarnings).toFixed(4),
+      balanced: Math.abs(assets - liabilities - equity - retainedEarnings) < 0.0001,
+      lines
+    };
+  });
 }
