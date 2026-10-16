@@ -354,8 +354,8 @@ export function registerAccounting(app: FastifyInstance, db: Database) {
     const principal = request.principal!;
     const result = await db.query(
       `SELECT a.id,a.account_code,a.name,a.account_type,
-              COALESCE(SUM(jl.debit),0)::text AS debit_total,
-              COALESCE(SUM(jl.credit),0)::text AS credit_total
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.debit ELSE 0 END),0)::text AS debit_total,
+              COALESCE(SUM(CASE WHEN je.id IS NOT NULL THEN jl.credit ELSE 0 END),0)::text AS credit_total
        FROM accounts a
        LEFT JOIN journal_lines jl ON jl.tenant_id=a.tenant_id AND jl.account_id=a.id
        LEFT JOIN journal_entries je ON je.tenant_id=jl.tenant_id AND je.id=jl.journal_entry_id
