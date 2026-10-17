@@ -5,6 +5,7 @@ import { registerAuth } from "./auth.js";
 import { registerSync } from "./sync.js";
 import { registerBusiness } from "./business.js";
 import { registerInvoices } from "./invoices.js";
+import { registerPurchases } from "./purchases.js";
 import { registerAccounting } from "./accounting.js";
 import { registerPayments } from "./payments.js";
 import { registerCatalog } from "./catalog.js";
@@ -31,6 +32,7 @@ export function buildApp(config: AppConfig, db: Database) {
   registerSync(app, db);
   registerBusiness(app, db);
   registerInvoices(app, db);
+  registerPurchases(app, db);
   registerAccounting(app, db);
   registerPayments(app, db);
   registerCatalog(app, db);
