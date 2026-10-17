@@ -1,6 +1,6 @@
 # RSS Orbinex — Implementation Status
 
-**Updated:** 2026-10-14  
+**Updated:** 2026-10-17  
 **Source of truth:** `REQUIREMENTS.md` and `OFFLINE_SYNC_AND_REMOVABLE_BACKUP.md`
 
 This is an implementation tracker, not a declaration that the full product is production-ready. A route passing TypeScript/build/unit CI does not replace PostgreSQL integration, security, concurrency, recovery, or end-to-end testing.
@@ -20,8 +20,8 @@ RSS Orbinex is required to become a complete accounts and business-management ap
 
 - [ ] Sales: customers, quotations, invoices, configurable tax/discounts, PDF/print, credit notes, sales returns, customer statements, receivables aging, and immutable finalized-document snapshots.
 - [ ] Inventory: products/services, SKUs, purchase receipts, stock ledger, transfers/adjustments, damaged-stock approvals/write-offs, low-stock alerts, returns, and an approved costing/valuation method.
-- [ ] Purchasing: suppliers, purchase orders, supplier bills, receipts, supplier returns, supplier balances, and due dates.
-- [ ] Payments: receipts, partial allocations, supplier payments, refunds/reversals, expenses, cash/bank accounts, and payment reconciliation.
+- [~] Purchasing API: supplier purchase bills (draft create/list/detail, totals, posting, ledger entry, stock receipt movement, product cost update), supplier payments (partial/full payment, balance/currency/account validation, ledger posting, idempotency and audit). Purchase orders, separate receipt workflow, supplier returns, and supplier balance reconciliation remain outstanding. No end-to-end UI workflow is verified.
+- [~] Payments API: customer invoice payments and supplier payments are implemented with transactional ledger posting and balance checks. Payment allocations across multiple invoices, refunds/reversals, expenses, cash/bank reconciliation, and reconciliation reports remain outstanding.
 - [ ] Full double-entry accounting: chart of accounts, posting rules for each transaction type, immutable balanced journals, general ledger, trial balance, profit and loss, balance sheet, receivables/payables, and subledger reconciliation.
 - [ ] Business controls: authentication lifecycle, role permissions, tenant isolation, audit log, fiscal periods, exports, backup/restore, subscription limits, and secure shared API access.
 - [ ] Launch decisions still required before accounting-grade production claims: target tax jurisdiction and rules, base/multi-currency policy, inventory costing method, hosting/backup targets, and provider choices. Defaults must not be invented silently.
@@ -51,7 +51,7 @@ A module is not complete merely because a route or screen exists. It must pass i
 - [x] Customer payment list/record APIs. Receiving a payment validates the remaining invoice balance and posts the payment plus balanced cash/receivables journal in one transaction.
 - [x] Chart-of-accounts list/create, draft journal creation, balanced journal posting, and trial-balance reporting.
 - [x] Tenant-scoped sync push/pull event-journal endpoints.
-- [x] CI currently runs API type-check, build, and the existing test suite; latest API source commit was checked successfully by GitHub Actions.
+- [x] CI workflow runs API type-check, build, tests, migration checks, and container build. Commit `02bf810` passed API CI and full Orbinex CI; newer purchase validation commits `3a52bd6` and `c48a92e` were queued/in progress at the latest status check and must not be treated as passed yet.
 
 ## Not yet production-ready
 
@@ -59,7 +59,7 @@ A module is not complete merely because a route or screen exists. It must pass i
 - [ ] Deploy the API and database with TLS, managed secrets, backups, monitoring, and tested restore procedures.
 - [ ] Connect the browser UI to the API. The temporary `RSS-Apps-Website/orbinex/` prototype still uses browser-local storage and is not a shared multi-user application.
 - [ ] Complete email invitations/verification, password reset, MFA, device-management UI, and production account recovery.
-- [ ] Add quotes, purchases, supplier payments, credit notes, sales-return workflow, and expense workflows.
+- [ ] Add quotes, purchase orders/receipts, supplier returns, credit notes, sales-return workflow, and expense workflows. Supplier bill and supplier-payment API routes now exist, but they still need PostgreSQL integration and end-to-end tests.
 - [ ] Add invoice/quotation PDFs, printing, document storage adapters (OCI Object Storage / Cloudflare R2), and retention policies.
 - [ ] Complete reports, including aged receivables/payables, inventory valuation using an approved costing method, profit and loss, balance sheet, and cash flow.
 - [ ] Implement subscription plans, billing integration, tenant limits, platform administration, and server-side entitlement enforcement.
