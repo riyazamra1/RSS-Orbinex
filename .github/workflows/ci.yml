@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "apps/api/**"
+      - "apps/web/**"
       - "package.json"
       - "apps/api/package.json"
       - "apps/api/migrations/**"
@@ -69,5 +70,5 @@ jobs:
         run: npm run build
       - name: Run API tests
         run: npm test
-      - name: Build API container image
+      - name: Validate Orbinex web workspace\n        run: node apps/web/validate.cjs\n      - name: Build API container image
         run: docker build -t rss-orbinex-api:ci .
