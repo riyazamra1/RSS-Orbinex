@@ -234,7 +234,7 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
         if(lineResult.rowCount===0) throw new Error("PURCHASE_BILL_EMPTY");
         const journalResult=await client.query(
           `INSERT INTO journal_entries (tenant_id,journal_number,entry_date,description,status,currency,source_type,source_id,posted_at,posted_by)
-           SELECT $1,$2,bill_date,'Supplier bill '||bill_number,'posted',$3,'purchase_bill',$4,now(),$5 FROM purchase_bills WHERE tenant_id=$1 AND id=$4
+           SELECT $1,$2,bill_date,'Supplier bill '||bill_number,'draft',$3,'purchase_bill',$4,NULL,$5 FROM purchase_bills WHERE tenant_id=$1 AND id=$4
            RETURNING id`,
           [principal.tenantId,input.journalNumber,bill.currency,billId,principal.userId]
         );
