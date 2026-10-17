@@ -1,0 +1,11 @@
+{
+  "name": "RSS Orbinex",
+  "short_name": "Orbinex",
+  "description": "RSS Orbinex accounts and business management workspace",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#101522",
+  "icons": []
+}
