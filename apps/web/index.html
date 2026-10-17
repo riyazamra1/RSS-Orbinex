@@ -99,10 +99,11 @@
  c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records"></div><div class="footnote" style="margin-top:12px">Showing up to 50 records from the connected API.</div></div><div id="createArea" class="section"></div>';
  const renderRows=(subset)=>{
   let markup=table(subset,cfg.columns);
-  if(cfg.key==="invoices"){
+  if(cfg.key==="invoices"||cfg.key==="purchaseBills"){
    const actions=subset.map(row=>{
     const buttons=[];
-    if(row.status==="draft")buttons.push('<button class="btn" data-post-invoice="'+esc(row.id)+'">Post invoice</button>');
+    if(row.status==="draft"&&cfg.key==="invoices")buttons.push('<button class="btn" data-post-invoice="'+esc(row.id)+'">Post invoice</button>');
+    if(row.status==="draft"&&cfg.key==="purchaseBills")buttons.push('<button class="btn" data-post-bill="'+esc(row.id)+'">Post bill</button>');
     if(["posted","partially_paid"].includes(row.status)&&Number(row.balanceDue)>0)buttons.push('<button class="btn primary" data-receive-payment="'+esc(row.id)+'">Record payment</button>');
     return '<tr><td colspan="'+cfg.columns.length+'" style="text-align:right"><div class="actions">'+buttons.join("")+'</div></td></tr>';
    }).join("");
@@ -116,11 +117,25 @@
    catch(error){notify(error.message,true);button.disabled=false;}
   });
   document.querySelectorAll("[data-receive-payment]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.receivePayment);if(row)void paymentForm(row);});
+  document.querySelectorAll("[data-post-bill]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.postBill);if(row)void postPurchaseBill(row);});
  };
  renderRows(rows);
  $("filter").oninput=()=>{const q=$("filter").value.toLowerCase();renderRows(rows.filter(row=>Object.values(row).some(value=>String(value??"").toLowerCase().includes(q))));};
  const refresh=()=>openPage(state.page),rb=$("refreshBtn");if(rb)rb.onclick=refresh;
  if(canCreate)$("newBtn").onclick=()=>createForm(cfg);
+}
+async function postPurchaseBill(bill) {
+ const area=$("createArea");
+ area.innerHTML='<div class="card panel"><h2>Post purchase bill</h2><div class="empty">Loading accounts…</div></div>';
+ try {
+  const [purchaseData,payableData]=await Promise.all([api("/v1/accounting/accounts?type=expense"),api("/v1/accounting/accounts?type=liability")]);
+  const purchases=(purchaseData.accounts||[]).filter(a=>a.active),payables=(payableData.accounts||[]).filter(a=>a.active);
+  if(!purchases.length||!payables.length)throw new Error("Create or activate a purchase/expense account and an accounts-payable liability account first.");
+  const options=list=>list.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.code)+' — '+esc(a.name)+'</option>').join("");
+  area.innerHTML='<div class="card panel"><div class="sectionhead"><h2>Post '+esc(bill.billNumber)+'</h2><button class="btn ghost" id="cancelPostBill">Cancel</button></div><form id="postBillForm"><div class="field"><label>Purchase / expense account</label><select name="purchaseAccountId">'+options(purchases)+'</select></div><div class="field"><label>Accounts payable</label><select name="payableAccountId">'+options(payables)+'</select></div><div class="field"><label>Journal number</label><input name="journalNumber" required value="JRN-PB-'+Math.floor(Math.random()*900000+100000)+'"></div><button class="btn primary" type="submit">Post bill to ledger</button></form></div>';
+  $("cancelPostBill").onclick=()=>{area.innerHTML="";};
+  $("postBillForm").onsubmit=async event=>{event.preventDefault();const form=new FormData(event.currentTarget);try{await api("/v1/purchase-bills/"+bill.id+"/post",{method:"POST",body:JSON.stringify({operationId:uuid(),journalNumber:String(form.get("journalNumber")),purchaseAccountId:String(form.get("purchaseAccountId")),payableAccountId:String(form.get("payableAccountId"))})});notify("Purchase bill posted.");await openPage("purchase-bills");}catch(error){notify(error.message,true);}};
+ } catch(error) {area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retryPostBill">Retry</button></div>';$("retryPostBill").onclick=()=>void postPurchaseBill(bill);}
 }
 async function purchaseForm(cfg) {
  const area=$("createArea");
