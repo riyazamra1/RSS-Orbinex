@@ -30,7 +30,7 @@ export function buildApp(config: AppConfig, db: Database) {
 
   app.register(helmet, { global: true });
   app.register(cors, {
-    origin: config.WEB_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
+    origin: (config.WEB_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173,https://rssapps.net,https://www.rssapps.net").split(",").map((origin) => origin.trim()).filter(Boolean),
     methods: ["GET", "POST", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"]
   });
