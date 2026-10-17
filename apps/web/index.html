@@ -99,12 +99,14 @@
  c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records"></div><div class="footnote" style="margin-top:12px">Showing up to 50 records from the connected API.</div></div><div id="createArea" class="section"></div>';
  const renderRows=(subset)=>{
   let markup=table(subset,cfg.columns);
-  if(cfg.key==="invoices"||cfg.key==="purchaseBills"){
+  if(["invoices","purchaseBills","expenses"].includes(cfg.key)){
    const actions=subset.map(row=>{
     const buttons=[];
     if(row.status==="draft"&&cfg.key==="invoices")buttons.push('<button class="btn" data-post-invoice="'+esc(row.id)+'">Post invoice</button>');
     if(row.status==="draft"&&cfg.key==="purchaseBills")buttons.push('<button class="btn" data-post-bill="'+esc(row.id)+'">Post bill</button>');
-    if(["posted","partially_paid"].includes(row.status)&&Number(row.balanceDue)>0)buttons.push('<button class="btn primary" data-receive-payment="'+esc(row.id)+'">Record payment</button>');
+    if(cfg.key==="invoices"&&["posted","partially_paid"].includes(row.status)&&Number(row.balanceDue)>0)buttons.push('<button class="btn primary" data-receive-payment="'+esc(row.id)+'">Record customer payment</button>');
+    if(cfg.key==="purchaseBills"&&["posted","partially_paid"].includes(row.status)&&Number(row.balanceDue)>0)buttons.push('<button class="btn primary" data-pay-supplier="'+esc(row.id)+'">Pay supplier</button>');
+    if(cfg.key==="expenses"&&row.status==="draft")buttons.push('<button class="btn" data-post-expense="'+esc(row.id)+'">Post expense</button>');
     return '<tr><td colspan="'+cfg.columns.length+'" style="text-align:right"><div class="actions">'+buttons.join("")+'</div></td></tr>';
    }).join("");
    markup=markup.replace("</tbody></table>",actions+"</tbody></table>");
@@ -118,6 +120,8 @@
   });
   document.querySelectorAll("[data-receive-payment]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.receivePayment);if(row)void paymentForm(row);});
   document.querySelectorAll("[data-post-bill]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.postBill);if(row)void postPurchaseBill(row);});
+  document.querySelectorAll("[data-pay-supplier]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.paySupplier);if(row)void supplierPaymentForm(row);});
+  document.querySelectorAll("[data-post-expense]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.postExpense);if(row)void postExpenseForm(row);});
  };
  renderRows(rows);
  $("filter").oninput=()=>{const q=$("filter").value.toLowerCase();renderRows(rows.filter(row=>Object.values(row).some(value=>String(value??"").toLowerCase().includes(q))));};
@@ -191,6 +195,46 @@ async function paymentForm(invoice) {
  }catch(error){area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retryPayment">Retry</button></div>';$("retryPayment").onclick=()=>{void paymentForm(invoice);};}
 }
 
+async function supplierPaymentForm(bill) {
+ const area=$("createArea");
+ area.innerHTML='<div class="card panel"><h2>Pay supplier</h2><div class="empty">Loading cash and payable accounts…</div></div>';
+ try {
+  const [cashData,payableData]=await Promise.all([api("/v1/accounting/accounts?type=asset"),api("/v1/accounting/accounts?type=liability")]);
+  const cash=(cashData.accounts||[]).filter(a=>a.active),payables=(payableData.accounts||[]).filter(a=>a.active);
+  if(!cash.length||!payables.length)throw new Error("Create or activate a cash/bank asset account and an accounts-payable liability account first.");
+  const options=list=>list.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.code)+' — '+esc(a.name)+'</option>').join("");
+  area.innerHTML='<div class="card panel"><div class="sectionhead"><div><h2>Pay supplier</h2><div class="muted">'+esc(bill.billNumber)+' · '+esc(bill.supplierName)+'</div></div><button class="btn ghost" id="cancelSupplierPayment">Cancel</button></div><div class="grid"><div class="stat"><span>Bill total</span><strong>'+esc(money(bill.grandTotal,bill.currency))+'</strong></div><div class="stat"><span>Paid so far</span><strong>'+esc(money(bill.paidTotal,bill.currency))+'</strong></div><div class="stat"><span>Balance due</span><strong>'+esc(money(bill.balanceDue,bill.currency))+'</strong></div></div><form id="supplierPaymentForm"><div class="split"><div class="field"><label>Payment number</label><input name="paymentNumber" required maxlength="80" value="SPAY-'+Date.now().toString().slice(-8)+'"></div><div class="field"><label>Journal number</label><input name="journalNumber" required maxlength="80" value="JRN-SPAY-'+Math.floor(Math.random()*900000+100000)+'"></div></div><div class="split"><div class="field"><label>Amount ('+esc(bill.currency)+')</label><input name="amount" type="number" min="0.0001" max="'+esc(bill.balanceDue)+'" step="0.0001" value="'+esc(bill.balanceDue)+'" required></div><div class="field"><label>Method</label><select name="method"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div></div><div class="field"><label>Reference</label><input name="reference" maxlength="200" placeholder="Bank reference or payment receipt"></div><div class="split"><div class="field"><label>Cash / bank account</label><select name="cashAccountId" required>'+options(cash)+'</select></div><div class="field"><label>Accounts payable</label><select name="payableAccountId" required>'+options(payables)+'</select></div></div><button class="btn primary" type="submit">Record supplier payment</button></form><p class="footnote">Records the payment, reduces accounts payable and posts a balanced ledger entry. The amount cannot exceed the remaining bill balance.</p></div>';
+  $("cancelSupplierPayment").onclick=()=>{area.innerHTML="";};
+  $("supplierPaymentForm").onsubmit=async event=>{
+   event.preventDefault();const form=new FormData(event.currentTarget);
+   const body={operationId:uuid(),paymentNumber:String(form.get("paymentNumber")).trim(),journalNumber:String(form.get("journalNumber")).trim(),billId:bill.id,amount:String(form.get("amount")),currency:bill.currency,method:String(form.get("method")),cashAccountId:String(form.get("cashAccountId")),payableAccountId:String(form.get("payableAccountId"))};
+   const reference=String(form.get("reference")||"").trim();if(reference)body.reference=reference;
+   if(body.cashAccountId===body.payableAccountId){notify("Choose different cash and payable accounts.",true);return;}
+   try{await api("/v1/supplier-payments",{method:"POST",body:JSON.stringify(body)});notify("Supplier payment recorded and posted.");await openPage("purchase-bills");}
+   catch(error){notify(error.message,true);}
+  };
+ }catch(error){area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retrySupplierPayment">Retry</button></div>'; $("retrySupplierPayment").onclick=()=>void supplierPaymentForm(bill);}
+}
+async function postExpenseForm(expense) {
+ const area=$("createArea");
+ area.innerHTML='<div class="card panel"><h2>Post expense</h2><div class="empty">Loading expense and cash/bank accounts…</div></div>';
+ try {
+  const [expenseData,cashData]=await Promise.all([api("/v1/accounting/accounts?type=expense"),api("/v1/accounting/accounts?type=asset")]);
+  const expenseAccounts=(expenseData.accounts||[]).filter(a=>a.active),cashAccounts=(cashData.accounts||[]).filter(a=>a.active);
+  if(!expenseAccounts.length||!cashAccounts.length)throw new Error("Create or activate an expense account and a cash/bank asset account first.");
+  const options=list=>list.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.code)+' — '+esc(a.name)+'</option>').join("");
+  area.innerHTML='<div class="card panel"><div class="sectionhead"><div><h2>Post '+esc(expense.expenseNumber)+'</h2><div class="muted">'+esc(expense.description)+'</div></div><button class="btn ghost" id="cancelPostExpense">Cancel</button></div><div class="stat"><span>Total including tax</span><strong>'+esc(money(expense.totalAmount,expense.currency))+'</strong></div><form id="postExpenseForm"><div class="field"><label>Expense account</label><select name="expenseAccountId" required>'+options(expenseAccounts)+'</select></div><div class="field"><label>Cash / bank account</label><select name="cashAccountId" required>'+options(cashAccounts)+'</select></div><div class="field"><label>Journal number</label><input name="journalNumber" required maxlength="80" value="JRN-EXP-'+Math.floor(Math.random()*900000+100000)+'"></div><button class="btn primary" type="submit">Post expense to ledger</button></form><p class="footnote">Posting creates a balanced journal and locks the expense from edits.</p></div>';
+  $("cancelPostExpense").onclick=()=>{area.innerHTML="";};
+  $("postExpenseForm").onsubmit=async event=>{
+   event.preventDefault();const form=new FormData(event.currentTarget);
+   const expenseAccountId=String(form.get("expenseAccountId")),cashAccountId=String(form.get("cashAccountId"));
+   if(expenseAccountId===cashAccountId){notify("Choose different accounts.",true);return;}
+   const body={operationId:uuid(),journalNumber:String(form.get("journalNumber")).trim(),expenseAccountId,cashAccountId};
+   try{await api("/v1/expenses/"+encodeURIComponent(expense.id)+"/post",{method:"POST",body:JSON.stringify(body)});notify("Expense posted to the accounting ledger.");await openPage("expenses");}
+   catch(error){notify(error.message,true);}
+  };
+ }catch(error){area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retryPostExpense">Retry</button></div>'; $("retryPostExpense").onclick=()=>void postExpenseForm(expense);}
+}
  function createForm(cfg) {
    if (cfg.key === "purchaseBills") { void purchaseForm(cfg); return; }
    if (cfg.key === "invoices") { void invoiceForm(cfg); return; }
