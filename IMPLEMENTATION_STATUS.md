@@ -12,7 +12,7 @@ This is an implementation tracker, not a declaration that the full product is pr
 - [x] Verified corrected migrations, API type-check/build/tests, and Docker image build in GitHub Actions on `main` (run 38599160975, conclusion `success`, 2026-10-14). This is CI evidence, not yet proof of a deployed production environment.
 - [x] Updated the RSS Apps website source to list RSS Orbinex, add homepage and project-detail links to the interactive preview, and validate the preview and navigation scripts.
 - [ ] Confirm that the website hosting provider deploys the updated `RSS-Apps-Website` main branch and verify `https://rssapps.net/orbinex/` in a browser. GitHub source changes do not by themselves prove the live host has updated.
-- [ ] Connect the preview to the API after a local or hosted API URL and authenticated session flow are available; current preview remains browser-local.
+- [x] Added an API-connected static browser workspace in `apps/web/` with online login/session revalidation, customer/supplier/product create-and-list flows, draft invoice creation with multiple lines, expense draft creation, purchase/payment lists, and ledger report views. Added an explicit API CORS origin allowlist via `WEB_ORIGINS` and a CI JavaScript/manifest validator.\n- [ ] Deploy the API/database and configure its HTTPS URL before the connected workspace can sign in on the public website; live sign-in and persisted end-to-end workflows are not yet verified.
 
 ## Full accounts-software acceptance scope (user-confirmed)
 
@@ -51,13 +51,13 @@ A module is not complete merely because a route or screen exists. It must pass i
 - [x] Customer payment list/record APIs. Receiving a payment validates the remaining invoice balance and posts the payment plus balanced cash/receivables journal in one transaction.
 - [x] Chart-of-accounts list/create, draft journal creation, balanced journal posting, and trial-balance reporting.
 - [x] Tenant-scoped sync push/pull event-journal endpoints.
-- [x] CI workflow runs API type-check, build, tests, migration checks, and container build. Purchase validation commits `3a52bd6` and `c48a92e` passed API CI and full Orbinex CI. Expense migration/API commits `aabf6b8`, `a256ca0`, `dabdbbe`, and route-auth test commit `b18911d` were in progress at the latest status check; see the Actions runs before treating the newest changes as passed.
+- [x] CI workflow runs API type-check, build, tests, migration checks, and container build. Purchase validation commits `3a52bd6` and `c48a92e` passed API CI and full Orbinex CI. Expense migration/API commits `aabf6b8`, `a256ca0`, `dabdbbe`, and route-auth test commit `b18911d` passed API CI and full Orbinex CI. CORS changes passed API CI at `c97fafd`; the newer browser workspace and static validation must pass the current run before they are treated as verified.
 
 ## Not yet production-ready
 
 - [ ] Apply and verify migrations against a real PostgreSQL database; add migration automation and integration tests.
 - [ ] Deploy the API and database with TLS, managed secrets, backups, monitoring, and tested restore procedures.
-- [ ] Connect the browser UI to the API. The temporary `RSS-Apps-Website/orbinex/` prototype still uses browser-local storage and is not a shared multi-user application.
+- [~] A separate API-connected client now exists at `RSS-Apps-Website/orbinex/app/` in source, while `RSS-Apps-Website/orbinex/` remains the clearly labelled browser-local demo. Website hosting/deployment and API/database connectivity still require verification.
 - [ ] Complete email invitations/verification, password reset, MFA, device-management UI, and production account recovery.
 - [ ] Add quotes, purchase orders/receipts, supplier returns, credit notes, and sales-return workflow. Supplier bill/payment and expense APIs now exist, but still need PostgreSQL integration and end-to-end workflow tests.
 - [ ] Add invoice/quotation PDFs, printing, document storage adapters (OCI Object Storage / Cloudflare R2), and retention policies.
