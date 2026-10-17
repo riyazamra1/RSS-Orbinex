@@ -39,6 +39,28 @@ describe("API health endpoints", () => {
   });
 });
 
+describe("Purchasing and payment API route protection", () => {
+  it("requires an authenticated online session for purchase and payment routes", async () => {
+    const db = { check: vi.fn(async () => true) } as unknown as Database;
+    const app = buildApp(config, db);
+    apps.push(app);
+    const requests = [
+      { method: "GET" as const, url: "/v1/purchase-bills" },
+      { method: "GET" as const, url: "/v1/purchase-bills/00000000-0000-4000-8000-000000000001" },
+      { method: "POST" as const, url: "/v1/purchase-bills", payload: {} },
+      { method: "POST" as const, url: "/v1/purchase-bills/00000000-0000-4000-8000-000000000001/post", payload: {} },
+      { method: "POST" as const, url: "/v1/supplier-payments", payload: {} },
+      { method: "GET" as const, url: "/v1/payments" },
+      { method: "POST" as const, url: "/v1/payments", payload: {} }
+    ];
+    for (const request of requests) {
+      const response = await app.inject(request);
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error).toBe("unauthorized");
+    }
+  });
+});
+
 describe("Expense API route protection", () => {
   it("registers expense endpoints behind online authentication", async () => {
     const db = { check: vi.fn(async () => true) } as unknown as Database;
