@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
+import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { registerAuth } from "./auth.js";
 import { registerSync } from "./sync.js";
@@ -28,6 +29,11 @@ export function buildApp(config: AppConfig, db: Database) {
   });
 
   app.register(helmet, { global: true });
+  app.register(cors, {
+    origin: config.WEB_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"]
+  });
   app.register(rateLimit, { global: true, max: 100, timeWindow: "1 minute" });
   registerAuth(app, db);
   registerSync(app, db);
