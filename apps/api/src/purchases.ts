@@ -275,4 +275,67 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
       throw error;
     }
   });
+  app.post("/v1/supplier-payments", { preHandler: authenticate(db) }, async (request, reply) => {
+    const parsed = z.object({
+      operationId:z.string().uuid(), paymentNumber:z.string().trim().min(1).max(80),
+      journalNumber:z.string().trim().min(1).max(80), billId:z.string().uuid(), amount:positive,
+      currency:z.string().regex(/^[A-Z]{3}$/).default("LKR"), method:z.enum(["cash","bank_transfer","card","cheque","other"]),
+      reference:z.string().trim().max(200).optional(), paidAt:z.string().datetime().optional(),
+      cashAccountId:z.string().uuid(), payableAccountId:z.string().uuid()
+    }).strict().refine(v=>v.cashAccountId!==v.payableAccountId,{path:["payableAccountId"],message:"Accounts must differ"}).safeParse(request.body);
+    if(!parsed.success) return reply.code(400).send({error:"invalid_supplier_payment",message:"Provide a valid payment, bill, journal number and two distinct accounts."});
+    const principal=request.principal!;
+    if(!canPost(principal.roleKey)) return reply.code(403).send({error:"forbidden",message:"Only an owner, administrator or accountant can record supplier payments."});
+    const input=parsed.data,requestHash=digest(input);
+    try {
+      const result=await db.transaction(async(client)=>{
+        const inserted=await client.query("INSERT INTO idempotency_records (tenant_id,operation_id,operation_type,request_hash) VALUES ($1,$2,'supplier_payment.record',$3) ON CONFLICT (tenant_id,operation_id) DO NOTHING RETURNING operation_id",[principal.tenantId,input.operationId,requestHash]);
+        if(inserted.rowCount===0){
+          const previous=await client.query("SELECT request_hash,response_status,response_body FROM idempotency_records WHERE tenant_id=$1 AND operation_id=$2 FOR UPDATE",[principal.tenantId,input.operationId]);
+          const prior=previous.rows[0] as {request_hash:Buffer;response_status:number|null;response_body:{supplierPaymentId?:string}|null}|undefined;
+          if(!prior||!Buffer.from(prior.request_hash).equals(requestHash)) throw new Error("IDEMPOTENCY_CONFLICT");
+          if(prior.response_status!==201||!prior.response_body?.supplierPaymentId) throw new Error("IDEMPOTENCY_INCOMPLETE");
+          return {...prior.response_body,replayed:true};
+        }
+        const selected=await client.query("SELECT id,bill_number,supplier_id,status,currency,grand_total::text AS grand_total FROM purchase_bills WHERE tenant_id=$1 AND id=$2 FOR UPDATE",[principal.tenantId,input.billId]);
+        const bill=selected.rows[0] as {id:string;bill_number:string;supplier_id:string;status:string;currency:string;grand_total:string}|undefined;
+        if(!bill) throw new Error("PURCHASE_BILL_NOT_FOUND");
+        if(!["posted","partially_paid"].includes(bill.status)) throw new Error("PURCHASE_BILL_NOT_PAYABLE");
+        if(bill.currency.trim()!==input.currency) throw new Error("SUPPLIER_PAYMENT_CURRENCY_MISMATCH");
+        const accountResult=await client.query("SELECT id,account_type FROM accounts WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND is_active=true",[principal.tenantId,[input.cashAccountId,input.payableAccountId]]);
+        const accountRows=accountResult.rows as Array<{id:string;account_type:string}>;
+        if(accountRows.length!==2||!accountRows.some(a=>a.id===input.cashAccountId&&a.account_type==="asset")||!accountRows.some(a=>a.id===input.payableAccountId&&a.account_type==="liability")) throw new Error("INVALID_SUPPLIER_PAYMENT_ACCOUNTS");
+        const paid=await client.query("SELECT COALESCE(SUM(amount),0)::text AS total FROM supplier_payments WHERE tenant_id=$1 AND bill_id=$2",[principal.tenantId,input.billId]);
+        const valid=await client.query("SELECT ($1::numeric+$2::numeric <= $3::numeric) AS within_balance",[String((paid.rows[0] as {total:string}).total),input.amount,bill.grand_total]);
+        if(!(valid.rows[0] as {within_balance:boolean}).within_balance) throw new Error("SUPPLIER_PAYMENT_EXCEEDS_BALANCE");
+        const paymentResult=await client.query("INSERT INTO supplier_payments (tenant_id,payment_number,supplier_id,bill_id,amount,currency,method,reference,paid_at,recorded_by) VALUES ($1,$2,$3,$4,$5::numeric,$6,$7,$8,COALESCE($9::timestamptz,now()),$10) RETURNING id,payment_number,amount::text AS amount,paid_at",[principal.tenantId,input.paymentNumber,bill.supplier_id,input.billId,input.amount,input.currency,input.method,input.reference??null,input.paidAt??null,principal.userId]);
+        const payment=paymentResult.rows[0] as {id:string;payment_number:string;amount:string};
+        const journalResult=await client.query("INSERT INTO journal_entries (tenant_id,journal_number,entry_date,description,status,currency,source_type,source_id,posted_by) VALUES ($1,$2,COALESCE($3::date,CURRENT_DATE),$4,'draft',$5,'supplier_payment',$6,$7) RETURNING id",[principal.tenantId,input.journalNumber,input.paidAt?input.paidAt.slice(0,10):null,"Supplier payment "+payment.payment_number+" for bill "+bill.bill_number,input.currency,payment.id,principal.userId]);
+        const journalId=String((journalResult.rows[0] as {id:string}).id);
+        await client.query("INSERT INTO journal_lines (tenant_id,journal_entry_id,line_number,account_id,debit,credit,description) VALUES ($1,$2,1,$3,$4::numeric,0,'Accounts payable reduced')",[principal.tenantId,journalId,input.payableAccountId,input.amount]);
+        await client.query("INSERT INTO journal_lines (tenant_id,journal_entry_id,line_number,account_id,debit,credit,description) VALUES ($1,$2,2,$3,0,$4::numeric,'Cash or bank paid')",[principal.tenantId,journalId,input.cashAccountId,input.amount]);
+        await client.query("UPDATE journal_entries SET status='posted',posted_at=now() WHERE tenant_id=$1 AND id=$2",[principal.tenantId,journalId]);
+        const updatedPaid=await client.query("SELECT COALESCE(SUM(amount),0)::text AS total FROM supplier_payments WHERE tenant_id=$1 AND bill_id=$2",[principal.tenantId,input.billId]);
+        const statusResult=await client.query("SELECT ($1::numeric >= $2::numeric) AS is_paid",[String((updatedPaid.rows[0] as {total:string}).total),bill.grand_total]);
+        const newStatus=(statusResult.rows[0] as {is_paid:boolean}).is_paid?"paid":"partially_paid";
+        await client.query("UPDATE purchase_bills SET status=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",[principal.tenantId,input.billId,newStatus]);
+        const responseBody={supplierPaymentId:payment.id,paymentNumber:payment.payment_number,billId:input.billId,amount:payment.amount,status:newStatus,journalId};
+        await client.query("UPDATE idempotency_records SET response_status=201,response_body=$3::jsonb,completed_at=now() WHERE tenant_id=$1 AND operation_id=$2",[principal.tenantId,input.operationId,JSON.stringify(responseBody)]);
+        await client.query("INSERT INTO audit_events (tenant_id,actor_user_id,event_type,entity_type,entity_id,outcome,metadata) VALUES ($1,$2,'supplier_payment.record','supplier_payment',$3,'success',$4::jsonb)",[principal.tenantId,principal.userId,payment.id,JSON.stringify({operationId:input.operationId,billId:input.billId,journalId})]);
+        return {...responseBody,replayed:false};
+      });
+      return reply.code(201).send(result);
+    } catch(error) {
+      if(error instanceof Error){
+        if(error.message==="IDEMPOTENCY_CONFLICT") return reply.code(409).send({error:"idempotency_conflict",message:"The operation ID was already used with different content."});
+        if(error.message==="PURCHASE_BILL_NOT_FOUND") return reply.code(404).send({error:"purchase_bill_not_found",message:"Purchase bill not found."});
+        if(error.message==="PURCHASE_BILL_NOT_PAYABLE") return reply.code(409).send({error:"purchase_bill_not_payable",message:"Only posted or partially paid bills can be paid."});
+        if(error.message==="SUPPLIER_PAYMENT_CURRENCY_MISMATCH") return reply.code(400).send({error:"currency_mismatch",message:"Payment currency must match the bill currency."});
+        if(error.message==="INVALID_SUPPLIER_PAYMENT_ACCOUNTS") return reply.code(400).send({error:"invalid_supplier_payment_accounts",message:"Choose an active cash/bank asset account and a liability/payables account."});
+        if(error.message==="SUPPLIER_PAYMENT_EXCEEDS_BALANCE") return reply.code(409).send({error:"supplier_payment_exceeds_balance",message:"Payment exceeds the bill's remaining balance."});
+      }
+      throw error;
+    }
+  });
+
 }
