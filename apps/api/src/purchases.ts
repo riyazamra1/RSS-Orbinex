@@ -332,6 +332,7 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
     } catch(error) {
       if(error instanceof Error){
         if(error.message==="IDEMPOTENCY_CONFLICT") return reply.code(409).send({error:"idempotency_conflict",message:"The operation ID was already used with different content."});
+        if(error.message==="IDEMPOTENCY_INCOMPLETE") return reply.code(409).send({error:"idempotency_incomplete",message:"The previous operation did not complete; retry with a new operation ID."});
         if(error.message==="PURCHASE_BILL_NOT_FOUND") return reply.code(404).send({error:"purchase_bill_not_found",message:"Purchase bill not found."});
         if(error.message==="PURCHASE_BILL_NOT_PAYABLE") return reply.code(409).send({error:"purchase_bill_not_payable",message:"Only posted or partially paid bills can be paid."});
         if(error.message==="SUPPLIER_PAYMENT_CURRENCY_MISMATCH") return reply.code(400).send({error:"currency_mismatch",message:"Payment currency must match the bill currency."});
