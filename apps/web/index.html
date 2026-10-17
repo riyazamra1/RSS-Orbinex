@@ -70,7 +70,7 @@
   suppliers:{path:"/v1/suppliers",key:"suppliers",title:"Suppliers",fields:[["code","Supplier code","text"],["name","Supplier name","text"],["email","Email","email"],["phone","Phone","text"]],columns:["code","name","email","phone","status"]},
   products:{path:"/v1/products",key:"products",title:"Products & stock",fields:[["sku","SKU","text"],["name","Product / service name","text"],["productType","Type","select",["stock","service"]],["unitCode","Unit code","text"],["costPrice","Cost price","number"],["salePrice","Sale price","number"],["reorderLevel","Reorder level","number"]],columns:["sku","name","productType","unitCode","costPrice","salePrice","stockOnHand","lowStock"]},
   invoices:{path:"/v1/invoices",key:"invoices",title:"Sales invoices",fields:[],columns:["invoiceNumber","customerName","issueDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
-  "purchase-bills":{path:"/v1/purchase-bills",key:"purchaseBills",title:"Purchase bills",columns:["billNumber","supplierName","billDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
+  "purchase-bills":{path:"/v1/purchase-bills",key:"purchaseBills",title:"Purchase bills",fields:[],columns:["billNumber","supplierName","billDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
   expenses:{path:"/v1/expenses",key:"expenses",title:"Expenses",fields:[["expenseNumber","Expense number","text"],["description","Description","text"],["expenseDate","Date","date"],["supplierName","Supplier / payee","text"],["category","Category","text"],["amount","Amount","number"],["taxAmount","Tax amount","number"],["paymentMethod","Payment method","select",["cash","bank_transfer","card","cheque","other"]],["paymentReference","Reference","text"]],columns:["expenseNumber","description","expenseDate","category","totalAmount","paymentMethod","status"]},
   payments:{path:"/v1/payments",key:"payments",title:"Payments",columns:["paymentNumber","customerName","invoiceNumber","direction","amount","currency","method","paidAt"]},
   accounts:{path:"/v1/accounting/accounts",key:"accounts",title:"Chart of accounts",columns:["accountCode","name","accountType","isActive"]},
@@ -95,7 +95,7 @@
  async function listPage(cfg) {
  const c=$("content"),data=await api(cfg.path+"?limit=50"),rows=data[cfg.key]||[];
  state.cache[cfg.key]=rows;
- const canCreate=!!cfg.fields||cfg.key==="invoices";
+ const canCreate=!!cfg.fields||cfg.key==="invoices"||cfg.key==="purchaseBills";
  c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records"></div><div class="footnote" style="margin-top:12px">Showing up to 50 records from the connected API.</div></div><div id="createArea" class="section"></div>';
  const renderRows=(subset)=>{
   let markup=table(subset,cfg.columns);
@@ -122,6 +122,39 @@
  const refresh=()=>openPage(state.page),rb=$("refreshBtn");if(rb)rb.onclick=refresh;
  if(canCreate)$("newBtn").onclick=()=>createForm(cfg);
 }
+async function purchaseForm(cfg) {
+ const area=$("createArea");
+ area.innerHTML='<div class="card panel"><h2>New purchase bill</h2><div class="empty">Loading suppliers and products…</div></div>';
+ try {
+  const [supplierData,productData]=await Promise.all([api("/v1/suppliers?limit=100"),api("/v1/products?limit=100")]);
+  const suppliers=supplierData.suppliers||[],products=productData.products||[];
+  if(!suppliers.length)throw new Error("Add a supplier before creating a purchase bill.");
+  const supplierOptions=suppliers.map(s=>'<option value="'+esc(s.id)+'">'+esc(s.name)+' ('+esc(s.code)+')</option>').join("");
+  const productOptions='<option value="">No linked product</option>'+products.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.sku)+' — '+esc(p.name)+'</option>').join("");
+  area.innerHTML='<div class="card panel"><div class="sectionhead"><h2>New purchase bill</h2><button class="btn ghost" id="cancelPurchase">Cancel</button></div><form id="purchaseForm"><div class="field"><label>Bill number</label><input name="billNumber" required value="PB-'+Date.now().toString().slice(-8)+'"></div><div class="field"><label>Supplier</label><select name="supplierId" required>'+supplierOptions+'</select></div><div class="field"><label>Supplier invoice number</label><input name="supplierInvoiceNumber" maxlength="100"></div><div class="split"><div class="field"><label>Bill date</label><input name="billDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></div><div class="field"><label>Due date</label><input name="dueDate" type="date"></div></div><div class="field"><label>Currency</label><select name="currency"><option>LKR</option><option>USD</option><option>EUR</option><option>GBP</option></select></div><div class="sectionhead"><h2>Purchase lines</h2><button class="btn" type="button" id="addPurchaseLine">＋ Add line</button></div><div id="purchaseLines"></div><button class="btn primary" type="submit">Save draft bill</button></form><p class="footnote">Saving creates a draft. Posting to the ledger is a separate step.</p></div>';
+  $("cancelPurchase").onclick=()=>{area.innerHTML="";};
+  const container=$("purchaseLines");
+  function addLine(){
+   const row=document.createElement("div");row.className="purchase-line";row.style.cssText="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px";
+   row.innerHTML='<div class="field"><label>Product (optional)</label><select data-product>'+productOptions+'</select></div><div class="field"><label>Description</label><input data-description required maxlength="500"></div><div class="split"><div class="field"><label>Quantity</label><input data-quantity type="number" min="0.0001" step="0.0001" value="1" required></div><div class="field"><label>Unit cost</label><input data-cost type="number" min="0" step="0.0001" value="0" required></div></div><div class="field"><label>Tax amount</label><input data-tax type="number" min="0" step="0.0001" value="0"></div><button class="btn ghost" type="button" data-remove>Remove line</button>';
+   row.querySelector("[data-product]").onchange=e=>{const p=products.find(x=>x.id===e.target.value);if(p){row.querySelector("[data-description]").value=p.name;row.querySelector("[data-cost]").value=String(p.costPrice||"0");}};
+   row.querySelector("[data-remove]").onclick=()=>{if(container.children.length>1)row.remove();else notify("A bill needs at least one line.",true);};
+   container.appendChild(row);
+  }
+  $("addPurchaseLine").onclick=addLine;addLine();
+  $("purchaseForm").onsubmit=async event=>{
+   event.preventDefault();const form=new FormData(event.currentTarget);
+   const lines=[...container.querySelectorAll(".purchase-line")].map(row=>{const line={description:row.querySelector("[data-description]").value.trim(),quantity:row.querySelector("[data-quantity]").value,unitCost:row.querySelector("[data-cost]").value,taxAmount:row.querySelector("[data-tax]").value||"0"};const productId=row.querySelector("[data-product]").value;if(productId)line.productId=productId;return line;});
+   const body={operationId:uuid(),billNumber:String(form.get("billNumber")).trim(),supplierId:String(form.get("supplierId")),currency:String(form.get("currency")),lines};
+   for(const key of ["supplierInvoiceNumber","billDate","dueDate"]){const value=String(form.get(key)||"").trim();if(value)body[key]=value;}
+   try{await api("/v1/purchase-bills",{method:"POST",body:JSON.stringify(body)});notify("Draft purchase bill created.");await openPage("purchase-bills");}
+   catch(error){notify(error.message,true);}
+  };
+ } catch(error) {
+  area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retryPurchase">Retry</button></div>';
+  $("retryPurchase").onclick=()=>void purchaseForm(cfg);
+ }
+}
 async function paymentForm(invoice) {
  const area=$("createArea");
  area.innerHTML='<div class="card panel"><div class="sectionhead"><h2>Record customer payment</h2><button class="btn ghost" id="cancelPayment">Cancel</button></div><div class="empty">Loading eligible accounts…</div></div>';
@@ -144,6 +177,7 @@ async function paymentForm(invoice) {
 }
 
  function createForm(cfg) {
+   if (cfg.key === "purchaseBills") { void purchaseForm(cfg); return; }
    if (cfg.key === "invoices") { void invoiceForm(cfg); return; }
    const area = $("createArea");
    const inputs = cfg.fields.map(([key, label, type, opts]) => {
