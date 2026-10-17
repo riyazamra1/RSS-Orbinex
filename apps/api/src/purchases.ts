@@ -28,7 +28,6 @@ const createSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["dueDate"], message: "Due date cannot be before bill date" });
   }
 });
-const operationSchema = z.object({ operationId: z.string().uuid() }).strict();
 const postSchema = z.object({
   operationId: z.string().uuid(),
   journalNumber: z.string().trim().min(1).max(80),
@@ -244,6 +243,8 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
           [principal.tenantId,journalId,input.purchaseAccountId,bill.grand_total]);
         await client.query("INSERT INTO journal_lines (tenant_id,journal_entry_id,line_number,account_id,debit,credit,description) VALUES ($1,$2,2,$3,0,$4::numeric,'Accounts payable')",
           [principal.tenantId,journalId,input.payableAccountId,bill.grand_total]);
+        await client.query("UPDATE journal_entries SET status='posted',posted_at=now(),posted_by=$3 WHERE tenant_id=$1 AND id=$2",
+          [principal.tenantId,journalId,principal.userId]);
         for(const line of lineResult.rows as Array<{product_id:string|null;quantity:string;unit_cost:string}>) if(line.product_id){
           const product=await client.query("SELECT product_type FROM products WHERE tenant_id=$1 AND id=$2 AND is_active=true",[principal.tenantId,line.product_id]);
           if(product.rowCount!==1) throw new Error("PRODUCT_NOT_FOUND");
