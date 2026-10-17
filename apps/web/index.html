@@ -69,7 +69,7 @@
   customers:{path:"/v1/customers",key:"customers",title:"Customers",fields:[["code","Customer code","text"],["name","Customer name","text"],["email","Email","email"],["phone","Phone","text"],["creditLimit","Credit limit","number"]],columns:["code","name","email","phone","creditLimit","status"]},
   suppliers:{path:"/v1/suppliers",key:"suppliers",title:"Suppliers",fields:[["code","Supplier code","text"],["name","Supplier name","text"],["email","Email","email"],["phone","Phone","text"]],columns:["code","name","email","phone","status"]},
   products:{path:"/v1/products",key:"products",title:"Products & stock",fields:[["sku","SKU","text"],["name","Product / service name","text"],["productType","Type","select",["stock","service"]],["unitCode","Unit code","text"],["costPrice","Cost price","number"],["salePrice","Sale price","number"],["reorderLevel","Reorder level","number"]],columns:["sku","name","productType","unitCode","costPrice","salePrice","stockOnHand","lowStock"]},
-  invoices:{path:"/v1/invoices",key:"invoices",title:"Sales invoices",columns:["invoiceNumber","customerName","issueDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
+  invoices:{path:"/v1/invoices",key:"invoices",title:"Sales invoices",fields:[],columns:["invoiceNumber","customerName","issueDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
   "purchase-bills":{path:"/v1/purchase-bills",key:"purchaseBills",title:"Purchase bills",columns:["billNumber","supplierName","billDate","dueDate","status","grandTotal","paidTotal","balanceDue"]},
   expenses:{path:"/v1/expenses",key:"expenses",title:"Expenses",fields:[["expenseNumber","Expense number","text"],["description","Description","text"],["expenseDate","Date","date"],["supplierName","Supplier / payee","text"],["category","Category","text"],["amount","Amount","number"],["taxAmount","Tax amount","number"],["paymentMethod","Payment method","select",["cash","bank_transfer","card","cheque","other"]],["paymentReference","Reference","text"]],columns:["expenseNumber","description","expenseDate","category","totalAmount","paymentMethod","status"]},
   payments:{path:"/v1/payments",key:"payments",title:"Payments",columns:["paymentNumber","customerName","invoiceNumber","direction","amount","currency","method","paidAt"]},
@@ -92,12 +92,13 @@
   }).join("");
   return '<div class="tablewrap"><table><thead><tr>' + headers + '</tr></thead><tbody>' + body + '</tbody></table></div>';
  }
- async function listPage(cfg){const c=$("content");let data=await api(cfg.path+"?limit=50");let rows=data[cfg.key]||[];state.cache[cfg.key]=rows;const canCreate=!!cfg.fields;c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records">'+table(rows,cfg.columns)+'</div><div class="footnote" style="margin-top:12px">Showing up to 50 records. Values are retrieved from the connected API.</div></div><div id="createArea" class="section"></div>';
+ async function listPage(cfg){const c=$("content");let data=await api(cfg.path+"?limit=50");let rows=data[cfg.key]||[];state.cache[cfg.key]=rows;const canCreate=!!cfg.fields || cfg.key==="invoices";c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records">'+table(rows,cfg.columns)+'</div><div class="footnote" style="margin-top:12px">Showing up to 50 records. Values are retrieved from the connected API.</div></div><div id="createArea" class="section"></div>';
  $("filter").oninput=()=>{const q=$("filter").value.toLowerCase();const filtered=rows.filter(r=>Object.values(r).some(v=>String(v??"").toLowerCase().includes(q)));$("records").innerHTML=table(filtered,cfg.columns);};
  const refresh=()=>openPage(state.page);const rb=$("refreshBtn");if(rb)rb.onclick=refresh;
  if(canCreate)$("newBtn").onclick=()=>createForm(cfg);
  }
  function createForm(cfg) {
+   if (cfg.key === "invoices") { void invoiceForm(cfg); return; }
    const area = $("createArea");
    const inputs = cfg.fields.map(([key, label, type, opts]) => {
     let control = "";
@@ -140,6 +141,75 @@
      notify(error.message, true);
     }
    };
+  }
+  async function invoiceForm(cfg) {
+   const area = $("createArea");
+   area.innerHTML = '<div class="card panel"><div class="sectionhead"><h2>New sales invoice</h2><button class="btn ghost" id="cancelCreate">Cancel</button></div><div class="empty">Loading customers and products…</div></div>';
+   $("cancelCreate").onclick = () => { area.innerHTML = ""; };
+   try {
+    const [customerData, productData] = await Promise.all([api("/v1/customers?limit=100"), api("/v1/products?limit=100")]);
+    const customers = customerData.customers || [];
+    const products = productData.products || [];
+    if (!customers.length) throw new Error("Add a customer before creating an invoice.");
+    const customerOptions = customers.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name) + ' (' + esc(c.code) + ')</option>').join("");
+    const productOptions = '<option value="">No linked product / service</option>' + products.map((p) => '<option value="' + esc(p.id) + '">' + esc(p.sku) + ' — ' + esc(p.name) + '</option>').join("");
+    area.innerHTML = '<div class="card panel"><div class="sectionhead"><h2>New sales invoice</h2><button class="btn ghost" id="cancelCreate">Cancel</button></div><form id="invoiceForm"><div class="field"><label>Invoice number</label><input name="invoiceNumber" required maxlength="80" value="INV-' + new Date().toISOString().slice(0,10).replace(/-/g,"") + '-' + Math.floor(Math.random()*9000+1000) + '"></div><div class="field"><label>Customer</label><select name="customerId" required>' + customerOptions + '</select></div><div class="split"><div class="field"><label>Issue date</label><input name="issueDate" type="date" value="' + new Date().toISOString().slice(0,10) + '"></div><div class="field"><label>Due date</label><input name="dueDate" type="date"></div></div><div class="field"><label>Currency</label><select name="currency"><option value="LKR">LKR — Sri Lankan rupee</option><option value="USD">USD — US dollar</option><option value="EUR">EUR — euro</option><option value="GBP">GBP — pound sterling</option></select></div><div class="sectionhead"><h2>Invoice lines</h2><button class="btn" type="button" id="addInvoiceLine">＋ Add line</button></div><div id="invoiceLines"></div><div class="actions" style="margin-top:18px"><button class="btn primary" type="submit">Save draft invoice</button></div></form><p class="footnote">The API calculates invoice totals. Saving creates a draft; posting and payment are separate steps.</p></div>';
+    $("cancelCreate").onclick = () => { area.innerHTML = ""; };
+    const lines = $("invoiceLines");
+    function addLine() {
+     const row = document.createElement("div");
+     row.className = "invoice-line";
+     row.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px";
+     row.innerHTML = '<div class="field"><label>Product or service (optional)</label><select data-product>' + productOptions + '</select></div><div class="field"><label>Description</label><input data-description required maxlength="500" placeholder="Item or service description"></div><div class="split"><div class="field"><label>Quantity</label><input data-quantity type="number" min="0.0001" step="0.0001" value="1" required></div><div class="field"><label>Unit price</label><input data-price type="number" min="0" step="0.0001" value="0" required></div></div><div class="split"><div class="field"><label>Discount amount</label><input data-discount type="number" min="0" step="0.0001" value="0"></div><div class="field"><label>Tax amount</label><input data-tax type="number" min="0" step="0.0001" value="0"></div></div><button class="btn ghost danger" type="button" data-remove>Remove line</button>';
+     row.querySelector("[data-product]").onchange = (event) => {
+      const product = products.find((p) => p.id === event.target.value);
+      if (product) {
+       row.querySelector("[data-description]").value = product.name;
+       row.querySelector("[data-price]").value = String(product.salePrice ?? "0");
+      }
+     };
+     row.querySelector("[data-remove]").onclick = () => { if (lines.children.length > 1) row.remove(); else notify("An invoice needs at least one line.", true); };
+     lines.appendChild(row);
+    }
+    $("addInvoiceLine").onclick = addLine;
+    addLine();
+    $("invoiceForm").onsubmit = async (event) => {
+     event.preventDefault();
+     const form = new FormData(event.currentTarget);
+     const invoiceLines = [...lines.querySelectorAll(".invoice-line")].map((row) => {
+      const productId = row.querySelector("[data-product]").value;
+      const line = {
+       description: row.querySelector("[data-description]").value.trim(),
+       quantity: row.querySelector("[data-quantity]").value,
+       unitPrice: row.querySelector("[data-price]").value,
+       discountAmount: row.querySelector("[data-discount]").value || "0",
+       taxAmount: row.querySelector("[data-tax]").value || "0"
+      };
+      if (productId) line.productId = productId;
+      return line;
+     });
+     const body = {
+      operationId: uuid(),
+      invoiceNumber: String(form.get("invoiceNumber") || "").trim(),
+      customerId: String(form.get("customerId") || ""),
+      currency: String(form.get("currency") || "LKR"),
+      lines: invoiceLines
+     };
+     if (form.get("issueDate")) body.issueDate = String(form.get("issueDate"));
+     if (form.get("dueDate")) body.dueDate = String(form.get("dueDate"));
+     try {
+      await api("/v1/invoices", { method: "POST", body: JSON.stringify(body) });
+      notify("Draft invoice created.");
+      area.innerHTML = "";
+      await openPage("invoices");
+     } catch (error) {
+      notify(error.message, true);
+     }
+    };
+   } catch (error) {
+    area.innerHTML = '<div class="card"><div class="alert">' + esc(error.message) + '</div><button class="btn" id="invoiceRetry">Retry</button></div>';
+    $("invoiceRetry").onclick = () => { void invoiceForm(cfg); };
+   }
   }
  async function reports(){const c=$("content");const [pl,bs,tb]=await Promise.allSettled([api("/v1/reports/profit-and-loss"),api("/v1/reports/balance-sheet"),api("/v1/accounting/trial-balance")]);const renderReport=(title,r,totals)=>r.status==="fulfilled"?'<div class="card"><h2>'+title+'</h2><div class="reporttotals">'+Object.entries(r.value.totals||{}).map(([k,v])=>'<div class="smallstat"><span class="muted">'+esc(k.replace(/([A-Z])/g," $1"))+'</span><strong>'+money(v)+'</strong></div>').join("")+'</div><details style="margin-top:12px"><summary>Account detail</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;color:#b8c8df">'+esc(JSON.stringify(r.value.accounts||r.value.rows||r.value,null,2))+'</pre></details></div>':'<div class="card"><h2>'+title+'</h2><p class="muted">'+esc(r.reason.message)+'</p></div>';c.innerHTML='<div class="section" style="margin-top:0;display:grid;gap:14px">'+renderReport("Profit & loss",pl)+renderReport("Balance sheet",bs)+renderReport("Trial balance",tb)+'</div><p class="footnote">Reports include posted ledger entries only. Currency consolidation is not implemented.</p>';}
  document.querySelectorAll("#sideNav button,#mobileNav button").forEach(b=>b.onclick=()=>openPage(b.dataset.page));
