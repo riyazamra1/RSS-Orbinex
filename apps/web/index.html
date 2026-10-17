@@ -97,13 +97,50 @@
  const refresh=()=>openPage(state.page);const rb=$("refreshBtn");if(rb)rb.onclick=refresh;
  if(canCreate)$("newBtn").onclick=()=>createForm(cfg);
  }
- function createForm(cfg){const area=$("createArea");const inputs=cfg.fields.map(([key,label,type,opts])=>'<div class="field"><label>'+esc(label)+'</label>'+(type==="select"?'<select name="'+key+'">'+opts.map(v=>'<option value="'+v+'">'+v+'</option>').join("")+'</select>':'<input name="'+key+'" type="'+(type==="number"?"number":type)+'" '+(type==="number"?'min="0" step="0.0001"':'')+' '+(["code","name","sku","productType","unitCode","expenseNumber","description","category","amount","paymentMethod"].includes(key)?"required":"")+'></div>').join("");area.innerHTML='<div class="card panel"><div class="sectionhead"><h2>New '+esc(cfg.title.replace(/s$/,""))+'</h2><button class="btn ghost" id="cancelCreate">Cancel</button></div><form id="createForm">'+inputs+'<div class="actions"><button class="btn primary" type="submit">Save draft / record</button></div></form><p class="footnote">This creates a record only. Posting and ledger effects require the relevant account selections and posting workflow.</p></div>'; $("cancelCreate").onclick=()=>area.innerHTML="";
- $("createForm").onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),body={};for(const [k,v] of f.entries())if(String(v).trim()!=="")body[k]=v;
- if(cfg.key==="customers")body.creditLimit=body.creditLimit||"0";
- if(cfg.key==="products"){body.costPrice=body.costPrice||"0";body.salePrice=body.salePrice||"0";body.reorderLevel=body.reorderLevel||"0";body.isActive=true;}
- if(cfg.key==="expenses"){body.operationId=uuid();body.expenseDate=body.expenseDate||new Date().toISOString().slice(0,10);body.amount=String(body.amount);body.taxAmount=String(body.taxAmount||"0");body.currency="LKR";}
- try{await api(cfg.path,{method:"POST",body:JSON.stringify(body)});notify("Record saved.");area.innerHTML="";await openPage(state.page);}catch(err){notify(err.message,true);}};
- }
+ function createForm(cfg) {
+   const area = $("createArea");
+   const inputs = cfg.fields.map(([key, label, type, opts]) => {
+    let control = "";
+    if (type === "select") {
+     control = '<select name="' + key + '">' + opts.map((value) => '<option value="' + value + '">' + value + '</option>').join("") + '</select>';
+    } else {
+     const numberAttrs = type === "number" ? ' min="0" step="0.0001"' : "";
+     const required = ["code", "name", "sku", "productType", "unitCode", "expenseNumber", "description", "category", "amount", "paymentMethod"].includes(key) ? " required" : "";
+     control = '<input name="' + key + '" type="' + type + '"' + numberAttrs + required + '>';
+    }
+    return '<div class="field"><label>' + esc(label) + '</label>' + control + '</div>';
+   }).join("");
+   area.innerHTML = '<div class="card panel"><div class="sectionhead"><h2>New ' + esc(cfg.title.replace(/s$/, "")) + '</h2><button class="btn ghost" id="cancelCreate">Cancel</button></div><form id="createForm">' + inputs + '<div class="actions"><button class="btn primary" type="submit">Save draft / record</button></div></form><p class="footnote">This creates a record only. Posting and ledger effects require the relevant account selections and posting workflow.</p></div>';
+   $("cancelCreate").onclick = () => { area.innerHTML = ""; };
+   $("createForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const body = {};
+    for (const [key, value] of formData.entries()) if (String(value).trim() !== "") body[key] = value;
+    if (cfg.key === "customers") body.creditLimit = body.creditLimit || "0";
+    if (cfg.key === "products") {
+     body.costPrice = body.costPrice || "0";
+     body.salePrice = body.salePrice || "0";
+     body.reorderLevel = body.reorderLevel || "0";
+     body.isActive = true;
+    }
+    if (cfg.key === "expenses") {
+     body.operationId = uuid();
+     body.expenseDate = body.expenseDate || new Date().toISOString().slice(0, 10);
+     body.amount = String(body.amount);
+     body.taxAmount = String(body.taxAmount || "0");
+     body.currency = "LKR";
+    }
+    try {
+     await api(cfg.path, { method: "POST", body: JSON.stringify(body) });
+     notify("Record saved.");
+     area.innerHTML = "";
+     await openPage(state.page);
+    } catch (error) {
+     notify(error.message, true);
+    }
+   };
+  }
  async function reports(){const c=$("content");const [pl,bs,tb]=await Promise.allSettled([api("/v1/reports/profit-and-loss"),api("/v1/reports/balance-sheet"),api("/v1/accounting/trial-balance")]);const renderReport=(title,r,totals)=>r.status==="fulfilled"?'<div class="card"><h2>'+title+'</h2><div class="reporttotals">'+Object.entries(r.value.totals||{}).map(([k,v])=>'<div class="smallstat"><span class="muted">'+esc(k.replace(/([A-Z])/g," $1"))+'</span><strong>'+money(v)+'</strong></div>').join("")+'</div><details style="margin-top:12px"><summary>Account detail</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;color:#b8c8df">'+esc(JSON.stringify(r.value.accounts||r.value.rows||r.value,null,2))+'</pre></details></div>':'<div class="card"><h2>'+title+'</h2><p class="muted">'+esc(r.reason.message)+'</p></div>';c.innerHTML='<div class="section" style="margin-top:0;display:grid;gap:14px">'+renderReport("Profit & loss",pl)+renderReport("Balance sheet",bs)+renderReport("Trial balance",tb)+'</div><p class="footnote">Reports include posted ledger entries only. Currency consolidation is not implemented.</p>';}
  document.querySelectorAll("#sideNav button,#mobileNav button").forEach(b=>b.onclick=()=>openPage(b.dataset.page));
  restore();
