@@ -199,6 +199,7 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
     } catch (error) {
       if (error instanceof Error) {
         if (error.message==="IDEMPOTENCY_CONFLICT") return reply.code(409).send({error:"idempotency_conflict",message:"The operation ID was already used with different content."});
+        if (error.message==="IDEMPOTENCY_INCOMPLETE") return reply.code(409).send({error:"idempotency_incomplete",message:"The previous operation did not complete; retry with a new operation ID."});
         if (error.message==="SUPPLIER_NOT_FOUND") return reply.code(404).send({error:"supplier_not_found",message:"Supplier does not exist or is inactive."});
         if (error.message==="PRODUCT_NOT_FOUND") return reply.code(404).send({error:"product_not_found",message:"A bill product does not exist or is inactive."});
       }
@@ -227,6 +228,7 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
         const bill=selected.rows[0] as {id:string;bill_number:string;supplier_id:string;status:string;currency:string;grand_total:string}|undefined;
         if(!bill) throw new Error("PURCHASE_BILL_NOT_FOUND");
         if(bill.status!=="draft") throw new Error("PURCHASE_BILL_NOT_DRAFT");
+        if(Number(bill.grand_total)<=0) throw new Error("PURCHASE_BILL_ZERO_TOTAL");
         const accounts=await client.query("SELECT id,account_type FROM accounts WHERE tenant_id=$1 AND id=ANY($2::uuid[]) AND is_active=true",[principal.tenantId,[input.purchaseAccountId,input.payableAccountId]]);
         const rows=accounts.rows as Array<{id:string;account_type:string}>;
         if(rows.length!==2||!rows.some(a=>a.id===input.purchaseAccountId&&["asset","expense"].includes(a.account_type))||!rows.some(a=>a.id===input.payableAccountId&&a.account_type==="liability")) throw new Error("INVALID_PURCHASE_ACCOUNTS");
@@ -266,9 +268,11 @@ export function registerPurchases(app: FastifyInstance, db: Database) {
     }catch(error){
       if(error instanceof Error){
         if(error.message==="IDEMPOTENCY_CONFLICT") return reply.code(409).send({error:"idempotency_conflict",message:"The operation ID was already used with different content."});
+        if(error.message==="IDEMPOTENCY_INCOMPLETE") return reply.code(409).send({error:"idempotency_incomplete",message:"The previous operation did not complete; retry with a new operation ID."});
         if(error.message==="PURCHASE_BILL_NOT_FOUND") return reply.code(404).send({error:"purchase_bill_not_found",message:"Purchase bill not found."});
         if(error.message==="PURCHASE_BILL_NOT_DRAFT") return reply.code(409).send({error:"purchase_bill_not_draft",message:"Only a draft purchase bill can be posted."});
         if(error.message==="PURCHASE_BILL_EMPTY") return reply.code(409).send({error:"purchase_bill_empty",message:"A bill needs at least one line."});
+        if(error.message==="PURCHASE_BILL_ZERO_TOTAL") return reply.code(409).send({error:"purchase_bill_zero_total",message:"A zero-value supplier bill cannot be posted."});
         if(error.message==="INVALID_PURCHASE_ACCOUNTS") return reply.code(400).send({error:"invalid_purchase_accounts",message:"Choose an active asset/expense account and an active liability account."});
         if(error.message==="PRODUCT_NOT_FOUND") return reply.code(409).send({error:"product_not_found",message:"A bill product is no longer active."});
       }
