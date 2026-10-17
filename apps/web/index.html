@@ -109,4 +109,48 @@
  restore();
 })();
 </script>
-</body></html>
+</body></html  function createForm(cfg) {
+   const area = $("createArea");
+   const inputs = cfg.fields.map(([key, label, type, opts]) => {
+    let control = "";
+    if (type === "select") {
+     control = '<select name="' + key + '">' + opts.map((value) => '<option value="' + value + '">' + value + '</option>').join("") + '</select>';
+    } else {
+     const numberAttrs = type === "number" ? ' min="0" step="0.0001"' : "";
+     const required = ["code", "name", "sku", "productType", "unitCode", "expenseNumber", "description", "category", "amount", "paymentMethod"].includes(key) ? " required" : "";
+     control = '<input name="' + key + '" type="' + type + '"' + numberAttrs + required + '>';
+    }
+    return '<div class="field"><label>' + esc(label) + '</label>' + control + '</div>';
+   }).join("");
+   area.innerHTML = '<div class="card panel"><div class="sectionhead"><h2>New ' + esc(cfg.title.replace(/s$/, "")) + '</h2><button class="btn ghost" id="cancelCreate">Cancel</button></div><form id="createForm">' + inputs + '<div class="actions"><button class="btn primary" type="submit">Save draft / record</button></div></form><p class="footnote">This creates a record only. Posting and ledger effects require the relevant account selections and posting workflow.</p></div>';
+   $("cancelCreate").onclick = () => { area.innerHTML = ""; };
+   $("createForm").onsubmit = async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const body = {};
+    for (const [key, value] of formData.entries()) if (String(value).trim() !== "") body[key] = value;
+    if (cfg.key === "customers") body.creditLimit = body.creditLimit || "0";
+    if (cfg.key === "products") {
+     body.costPrice = body.costPrice || "0";
+     body.salePrice = body.salePrice || "0";
+     body.reorderLevel = body.reorderLevel || "0";
+     body.isActive = true;
+    }
+    if (cfg.key === "expenses") {
+     body.operationId = uuid();
+     body.expenseDate = body.expenseDate || new Date().toISOString().slice(0, 10);
+     body.amount = String(body.amount);
+     body.taxAmount = String(body.taxAmount || "0");
+     body.currency = "LKR";
+    }
+    try {
+     await api(cfg.path, { method: "POST", body: JSON.stringify(body) });
+     notify("Record saved.");
+     area.innerHTML = "";
+     await openPage(state.page);
+    } catch (error) {
+     notify(error.message, true);
+    }
+   };
+  }
+>
