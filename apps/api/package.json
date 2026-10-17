@@ -17,7 +17,8 @@
     "pg": "^8.13.3",
     "zod": "^3.24.2",
     "@fastify/rate-limit": "^10.2.1",
-    "argon2": "^0.41.1"
+    "argon2": "^0.41.1",
+    "@fastify/cors": "^10.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
