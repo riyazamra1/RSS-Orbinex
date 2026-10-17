@@ -92,11 +92,57 @@
   }).join("");
   return '<div class="tablewrap"><table><thead><tr>' + headers + '</tr></thead><tbody>' + body + '</tbody></table></div>';
  }
- async function listPage(cfg){const c=$("content");let data=await api(cfg.path+"?limit=50");let rows=data[cfg.key]||[];state.cache[cfg.key]=rows;const canCreate=!!cfg.fields || cfg.key==="invoices";c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records">'+table(rows,cfg.columns)+'</div><div class="footnote" style="margin-top:12px">Showing up to 50 records. Values are retrieved from the connected API.</div></div><div id="createArea" class="section"></div>';
- $("filter").oninput=()=>{const q=$("filter").value.toLowerCase();const filtered=rows.filter(r=>Object.values(r).some(v=>String(v??"").toLowerCase().includes(q)));$("records").innerHTML=table(filtered,cfg.columns);};
- const refresh=()=>openPage(state.page);const rb=$("refreshBtn");if(rb)rb.onclick=refresh;
+ async function listPage(cfg) {
+ const c=$("content"),data=await api(cfg.path+"?limit=50"),rows=data[cfg.key]||[];
+ state.cache[cfg.key]=rows;
+ const canCreate=!!cfg.fields||cfg.key==="invoices";
+ c.innerHTML='<div class="card"><div class="sectionhead"><div><h2>'+esc(cfg.title)+'</h2><div class="muted">'+rows.length+' records loaded</div></div><div class="toolbar"><input class="search" id="filter" placeholder="Search loaded records…">'+(canCreate?'<button class="btn primary" id="newBtn">＋ New</button>':'<button class="btn" id="refreshBtn">↻ Refresh</button>')+'</div></div><div id="records"></div><div class="footnote" style="margin-top:12px">Showing up to 50 records from the connected API.</div></div><div id="createArea" class="section"></div>';
+ const renderRows=(subset)=>{
+  let markup=table(subset,cfg.columns);
+  if(cfg.key==="invoices"){
+   const actions=subset.map(row=>{
+    const buttons=[];
+    if(row.status==="draft")buttons.push('<button class="btn" data-post-invoice="'+esc(row.id)+'">Post invoice</button>');
+    if(["posted","partially_paid"].includes(row.status)&&Number(row.balanceDue)>0)buttons.push('<button class="btn primary" data-receive-payment="'+esc(row.id)+'">Record payment</button>');
+    return '<tr><td colspan="'+cfg.columns.length+'" style="text-align:right"><div class="actions">'+buttons.join("")+'</div></td></tr>';
+   }).join("");
+   markup=markup.replace("</tbody></table>",actions+"</tbody></table>");
+  }
+  $("records").innerHTML=markup;
+  document.querySelectorAll("[data-post-invoice]").forEach(button=>button.onclick=async()=>{
+   if(!confirm("Post this invoice to the accounting ledger? This action cannot be undone."))return;
+   button.disabled=true;
+   try{await api("/v1/invoices/"+button.dataset.postInvoice+"/post",{method:"POST",body:JSON.stringify({operationId:uuid()})});notify("Invoice posted to the ledger.");await openPage("invoices");}
+   catch(error){notify(error.message,true);button.disabled=false;}
+  });
+  document.querySelectorAll("[data-receive-payment]").forEach(button=>button.onclick=()=>{const row=rows.find(item=>item.id===button.dataset.receivePayment);if(row)void paymentForm(row);});
+ };
+ renderRows(rows);
+ $("filter").oninput=()=>{const q=$("filter").value.toLowerCase();renderRows(rows.filter(row=>Object.values(row).some(value=>String(value??"").toLowerCase().includes(q))));};
+ const refresh=()=>openPage(state.page),rb=$("refreshBtn");if(rb)rb.onclick=refresh;
  if(canCreate)$("newBtn").onclick=()=>createForm(cfg);
- }
+}
+async function paymentForm(invoice) {
+ const area=$("createArea");
+ area.innerHTML='<div class="card panel"><div class="sectionhead"><h2>Record customer payment</h2><button class="btn ghost" id="cancelPayment">Cancel</button></div><div class="empty">Loading eligible accounts…</div></div>';
+ $("cancelPayment").onclick=()=>{area.innerHTML="";};
+ try{
+  const data=await api("/v1/accounting/accounts?type=asset"),accounts=(data.accounts||[]).filter(account=>account.active);
+  const options=accounts.map(account=>'<option value="'+esc(account.id)+'">'+esc(account.code)+' — '+esc(account.name)+'</option>').join("");
+  if(accounts.length<2)throw new Error("Create or activate a cash/bank account and an accounts-receivable asset account before recording payments.");
+  area.innerHTML='<div class="card panel"><div class="sectionhead"><div><h2>Record customer payment</h2><div class="muted">'+esc(invoice.invoiceNumber)+' · '+esc(invoice.customerName)+'</div></div><button class="btn ghost" id="cancelPayment">Cancel</button></div><div class="grid"><div class="stat"><span>Invoice total</span><strong>'+esc(money(invoice.grandTotal,invoice.currency))+'</strong></div><div class="stat"><span>Paid so far</span><strong>'+esc(money(invoice.paidTotal,invoice.currency))+'</strong></div><div class="stat"><span>Balance due</span><strong>'+esc(money(invoice.balanceDue,invoice.currency))+'</strong></div></div><form id="paymentForm"><div class="split"><div class="field"><label>Payment number</label><input name="paymentNumber" required maxlength="80" value="PAY-'+new Date().toISOString().slice(0,10).replace(/-/g,"")+'-'+Math.floor(Math.random()*9000+1000)+'"></div><div class="field"><label>Journal number</label><input name="journalNumber" required maxlength="80" value="JRN-PAY-'+Math.floor(Math.random()*900000+100000)+'"></div></div><div class="split"><div class="field"><label>Amount ('+esc(invoice.currency)+')</label><input name="amount" type="number" min="0.0001" max="'+esc(invoice.balanceDue)+'" step="0.0001" value="'+esc(invoice.balanceDue)+'" required></div><div class="field"><label>Method</label><select name="method"><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div></div><div class="field"><label>Reference</label><input name="reference" maxlength="200" placeholder="Bank reference or receipt number"></div><div class="split"><div class="field"><label>Cash / bank account</label><select name="cashAccountId" required>'+options+'</select></div><div class="field"><label>Accounts receivable account</label><select name="receivableAccountId" required>'+options+'</select></div></div><div class="actions"><button class="btn primary" type="submit">Record payment and post ledger entry</button></div></form><p class="footnote">Posts a balanced journal: debit cash/bank, credit accounts receivable. Select the correct receivable control account.</p></div>';
+  $("cancelPayment").onclick=()=>{area.innerHTML="";};
+  $("paymentForm").onsubmit=async event=>{
+   event.preventDefault();const form=new FormData(event.currentTarget);
+   const body={operationId:uuid(),paymentNumber:String(form.get("paymentNumber")).trim(),journalNumber:String(form.get("journalNumber")).trim(),customerId:invoice.customerId,invoiceId:invoice.id,amount:String(form.get("amount")),currency:invoice.currency,method:String(form.get("method")),cashAccountId:String(form.get("cashAccountId")),receivableAccountId:String(form.get("receivableAccountId"))};
+   const reference=String(form.get("reference")||"").trim();if(reference)body.reference=reference;
+   if(body.cashAccountId===body.receivableAccountId){notify("Choose two different accounts.",true);return;}
+   try{await api("/v1/payments",{method:"POST",body:JSON.stringify(body)});notify("Payment recorded and ledger entry posted.");await openPage("invoices");}
+   catch(error){notify(error.message,true);}
+  };
+ }catch(error){area.innerHTML='<div class="card"><div class="alert">'+esc(error.message)+'</div><button class="btn" id="retryPayment">Retry</button></div>';$("retryPayment").onclick=()=>{void paymentForm(invoice);};}
+}
+
  function createForm(cfg) {
    if (cfg.key === "invoices") { void invoiceForm(cfg); return; }
    const area = $("createArea");
